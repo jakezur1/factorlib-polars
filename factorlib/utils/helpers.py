@@ -6,6 +6,10 @@ from factorlib.utils.datetime_maps import polars_to_pandas, pl_time_intervals
 
 
 def resample(data: pl.DataFrame, interval: str, melted=True):
+    """
+    Resample a polars dataframe to the given `interval`.
+
+    """
     resampling_technique = _up_or_downsample(data=data, model_interval=interval)
     if resampling_technique == 'downsample':
         if melted:  # include 'by' parameter with ticker column

@@ -136,4 +136,4 @@ factors/
 *.csv
 *.txt
 .idea/
-test.py
+scripts/testing/
