@@ -41,8 +41,8 @@ class Factor:
                                           'you plan to use in the factor model to which this factor will be added.'
 
         if tickers is not None and general_factor is False:
-            warnings.warn(f'You have passed a `tickers` list for factor called {name}, but this factor is not a '
-                          f'`general_factor` and so `tickers` will not being used.', ParameterOverride)
+            warnings.warn(f'You have passed a `tickers` list for the factor named {name}, but this factor is '
+                          'not a `general_factor` and so `tickers` will not being used.', category=ParameterOverride)
 
         if transforms is None:
             transforms = []
