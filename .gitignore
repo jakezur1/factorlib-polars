@@ -135,5 +135,6 @@ factors/
 *.png
 *.csv
 *.txt
+*.parquet
 .idea/
 scripts/testing/
