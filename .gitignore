@@ -128,7 +128,7 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-data/
+/data/
 factors/
 *.p
 *.pkl
@@ -137,4 +137,4 @@ factors/
 *.txt
 *.parquet
 .idea/
-scripts/testing/
+/scripts/testing/
