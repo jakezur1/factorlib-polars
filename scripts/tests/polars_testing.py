@@ -17,7 +17,7 @@ stocks_data = stocks_data.select(pl.col('date_index'), pl.all().exclude('date_in
 returns_data = stocks_data.with_columns(pct_change(['date_index']))
 
 fff_daily = (
-    pl.scan_csv(get_data_dir() / 'fff-daily.csv', try_parse_dates=True)
+    pl.scan_csv(get_data_dir() / 'fff_daily.csv', try_parse_dates=True)
     .collect(streaming=True)
 )
 fff_factor = Factor(name='fff', data=fff_daily, interval='1d', general_factor=True, tickers=tickers)
