@@ -334,7 +334,6 @@ class FactorModel:
             training_end = offset_datetime(training_end, interval=frequency)
             training_end = get_start_convention(training_end, self.interval)
 
-        training_spearman = training_spearman.resample(polars_to_pandas[self.interval]).bfill()
 
         expected_returns_index = np.array(expected_returns_index, dtype='datetime64[D]')
         expected_returns_index = np.unique(expected_returns_index)
