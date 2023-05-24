@@ -30,6 +30,10 @@ def get_data_dir() -> Path:
     return get_root_dir() / 'data'
 
 
+def get_factors_dir() -> Path:
+    return get_root_dir() / 'factors'
+
+
 def silence_warnings():
     warnings.simplefilter(action='ignore', category=pd.errors.PerformanceWarning)
     warnings.filterwarnings(action='ignore', message='An input array is constant; '
