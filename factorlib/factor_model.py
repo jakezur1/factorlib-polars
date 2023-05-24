@@ -54,7 +54,7 @@ class FactorModel:
         """
         Adds a factor to the model's factors dataframe.
 
-        :param factor: A Factor object that represents the factor to add to the model
+        :param factor: A Factor object that represents the factor to add to the model.
         :param replace: If replace=True, the factor being added will replace the existing factor with the same name.
                         This param is most commonly used when loading a past model that has been saved, and modifying a
                         factor that had been previously added.
@@ -132,12 +132,12 @@ class FactorModel:
         :param k_pct: The top and/or bottom k percent of stocks to trade.
         :param long_pct: The percentage of stocks to long. This is only applicable if `long_only` and `short_only`
                          are both False.
-        :param long_only:
+        :param long_only: Equivalent to setting long_pct=1.0.
 
-        :param short_only: Equivalent to setting long_pct=0.0
-        :param pred_time: Number of time steps ahead to predict. Formatted as `t+{time steps}`
+        :param short_only: Equivalent to setting long_pct=0.0.
+        :param pred_time: Number of time steps ahead to predict. Formatted as `t+{time steps}`.
         :param train_freq: The frequency with which to retrain the interval.
-        :param candidates: TO BE IMPLEMENTED
+        :param candidates: TODO: Implement candidates as a dict that holes yearly SP500 candidates.
         :param kwargs: Additional key word arguments to be given to the XGBoostRegressor. These can be regularization
                        parameters, training parameters, or any other parameter of XGBoostRegressor.
         :return: A statistics object containing all the information gathered while backtesting. See Statistics
@@ -396,9 +396,8 @@ class FactorModel:
                        long_only: bool = False,
                        short_only: bool = False) -> pd.Series:
         """
-        Given a row of returns and a percentage of stocks to long and short,
-        return a row of positions of equal long and short positions, with weights
-        equal to long_pct and 1 - long_pct respectively.
+        Given a row of returns and a percentage of stocks to long and short, return a row of positions of equal
+        long and short positions, with weights equal to long_pct and 1 - long_pct respectively.
 
         :param row: Intended to be used with pandas' .apply function. The first argument is reserved for the series
                     that will be operated on.

@@ -8,7 +8,7 @@ setup(
     license='',
     author='jakezur',
     author_email='jakezur@umich.edu',
-    description='Streamlines experimental pipeline for testing and creating factor models',
+    description='Streamlines experimental pipeline for tests and creating factor models',
     install_requires=['pandas_datareader',
                       'tqdm',
                       'pandas',

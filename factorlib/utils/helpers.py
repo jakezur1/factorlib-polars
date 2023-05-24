@@ -16,10 +16,10 @@ def resample(data: pl.DataFrame, interval: str, melted=True):
                    dataframe has duplicate dates in `date_index`, but unique combinations of dates and tickers in
                    `date_index` and `ticker`
 
-    :return: The resample dataframe.
+    :return: The resampled dataframe.
     """
 
-    resampling_technique = _up_or_downsample(data=data, resampling_interval=interval)
+    resampling_technique = _up_or_down_sample(data=data, resampling_interval=interval)
     if resampling_technique == 'downsample':
         if melted:  # include 'by' parameter with ticker column
             data = (
@@ -60,8 +60,8 @@ def offset_datetime(date: datetime, interval: str, sign=1):
     """
     Offset a datetime object in python by the given `interval` in the direction of `sign`.
 
-    :param date: The datetime to offset
-    :param interval: The string interval with which to offset `date`
+    :param date: The datetime to offset.
+    :param interval: The string interval with which to offset `date`.
     :param sign: The direction to offset `date`. If sign=1, offset the datetime in the future direction. If sign=-1,
                  offset the datetime back in time.
 
@@ -122,8 +122,8 @@ def align_by_date_index(df1: pl.DataFrame, df2: pl.DataFrame):
         df1 contains data from August 15 - September 1
         df2 contains data from August 15 - September 1
 
-    :param df1: A dataframe containing a `date_index` column
-    :param df2: A dataframe containing a `date_index` column
+    :param df1: A dataframe containing a `date_index` column.
+    :param df2: A dataframe containing a `date_index` column.
 
     :return: The aligned dataframes.
     """
@@ -161,9 +161,9 @@ def clean_data(X: pl.DataFrame, y: pl.DataFrame, col_thresh=0.5):
     Given an X and a y of training data, clean the data such that every value of y exists. X may still have null or nan
     values, but y will be continuous.
 
-    :param X: The features of the training data
-    :param y: The target to train on
-    :param col_thresh: DEPRECATED
+    :param X: The features of the training data.
+    :param y: The target to train on.
+    :param col_thresh: TODO: Deprecated.
 
     :return: The cleaned X and y.
     """
@@ -217,13 +217,14 @@ def get_start_convention(date: datetime, interval: str):
 
         output: datetime(2015, 1, 1)
 
-    :param date: The datetime with which to find the start convention
+    :param date: The datetime with which to find the start convention.
     :param interval: The pandas string interval to determine the start convention. See the values of
                      /datetime_maps/polars_to_pandas.json, or use intervals from polars_datetimes.json and pass those
                      intervals to polars_to_pandas.json to get valid pandas intervals.
 
-    :return: A datetime following the start convention of `interval`
+    :return: A datetime following the start convention of `interval`.
     """
+
     interval = polars_to_pandas[interval]
     temp_df = pd.DataFrame(index=[date])
     temp_df.index = pd.to_datetime(temp_df.index)
@@ -233,11 +234,13 @@ def get_start_convention(date: datetime, interval: str):
     return end_convention
 
 
-def _up_or_downsample(data: pl.DataFrame, resampling_interval: str):
+def _up_or_down_sample(data: pl.DataFrame, resampling_interval: str):
     """
-    An interval helper function used in resample() to determine if the data requires upsampling or downsampling
-    depending on the `resampling_interval` and the 'date_index' column of `data`.
+    An internal helper function used in resample(data: pl.DataFrame, interval: str, melted=True) to determine
+    if the data requires sampling or down sampling depending on the `resampling_interval` and the 'date_index'
+    column of `data`.
     """
+
     unique_dates = (
         data.lazy()
         .select(

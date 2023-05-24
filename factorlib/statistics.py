@@ -206,7 +206,7 @@ class Statistics:
         axs[0].set_title('Position Weights', size=fontsize)
         axs[0].tick_params(axis='both', which='major', labelsize=15)
 
-        # plot RMSE (testing and training)
+        # plot RMSE (tests and training)
         # RMSE is unfortunately useless for this data
         # axs[1].plot(self.training_mse.index, np.sqrt(self.training_mse.values * 100), label='Training MSE',
         #             linewidth=line_width)
@@ -216,7 +216,7 @@ class Statistics:
         # axs[1].legend(loc='upper left', prop={'size': fontsize})
         # axs[1].tick_params(axis='both', which='major', labelsize=15)
 
-        # plot rolling spearman ranks (testing and training)
+        # plot rolling spearman ranks (tests and training)
         axs[1].plot(self.training_spearman.index, self.training_spearman.values, label='Training Spearman',
                     linewidth=line_width)
         axs[1].plot(self.testing_spearman.index, self.testing_spearman.values, label='Testing Spearman',
