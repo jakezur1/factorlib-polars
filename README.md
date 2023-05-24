@@ -21,7 +21,7 @@ market, but it can be applied to a variety of time series prediction problems, l
 
 - Includes an entire Statistics module for easy model evaluation after backtesting.
 
-- Supporst a wide array of transformations and helper utility functions for creating robust and unique factors.
+- Supports a wide array of transformations and helper utility functions for creating robust and unique factors.
 
 ## Table of Contents
 
