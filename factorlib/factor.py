@@ -79,8 +79,9 @@ class Factor:
         self.transforms = transforms
 
         self.data.sort('date_index')
-        self.start = self.data.select(pl.col('date_index').first()).item(0, 0)
-        self.end = self.data.select(pl.col('date_index').last()).item(0, 0)
+        dates = data.select(pl.col('date_index').drop_nulls()).to_series().to_list()
+        self.start = dates[0]
+        self.end = dates[-1]
 
         if general_factor:
             tickers_df = pl.DataFrame({'ticker': tickers})

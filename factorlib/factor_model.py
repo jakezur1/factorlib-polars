@@ -174,14 +174,12 @@ class FactorModel:
         print('Starting Walk-Forward Optimization from', start_date, 'to', end_date, 'with a',
               train_interval.years, 'year training interval')
 
-        # cast returns to datetime
+        # cast returns date_index to datetime
         returns.replace('date_index', returns.select(pl.col('date_index').cast(pl.Datetime)).to_series())
-
         # shift returns back by 'time' time steps
         shifted_returns = shift_by_time_step(pred_time, returns)
 
         # align factor dates to be at the latest first date and earliest last date
-        shifted_returns = shifted_returns.select(pl.col('date_index').cast(pl.Datetime), pl.all().exclude('date_index'))
         _, shifted_returns = align_by_date_index(self.factors, shifted_returns)
 
         # stack the returns and sort on date_index and ticker
