@@ -28,9 +28,8 @@ fff_factor = Factor(name='fff', data=fff_daily, current_interval='1d', general_f
 fundamental_data_dir = get_data_dir() / 'fundamental'
 fundamentals1 = pl.scan_csv(fundamental_data_dir / 'fundamentals1_monthly.csv', try_parse_dates=True) \
     .collect(streaming=True)
-fundamentals1_factor = Factor(name='fundamentals_1', data=fundamentals1,
-                              current_interval='1mo', desired_interval='1d',
-                              tickers=tickers)
+fundamentals1_factor = Factor(name='fundamentals1', data=fundamentals1,
+                              current_interval='1mo', desired_interval='1d')
 
 model = FactorModel(tickers=tickers, interval='1d')
 
@@ -40,7 +39,7 @@ model.add_factor(fundamentals1_factor)
 stats = model.wfo(returns_data,
                   train_interval=relativedelta(years=5), anchored=False,  # interval parameters
                   start_date=datetime(2013, 1, 1), end_date=datetime(2019, 1, 1),
-                  k_pct=0.2, long_only=True)  # weight parameters
+                  k_pct=0.2, long_pct=0.5)  # weight parameters
 
 stats.print_statistics_report()
 stats.get_html()

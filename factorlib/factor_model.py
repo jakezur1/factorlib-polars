@@ -175,6 +175,10 @@ class FactorModel:
               train_interval.years, 'year training interval')
 
         # cast returns date_index to datetime
+        returns = pl.from_pandas(
+            returns.to_pandas().set_index('date_index').resample(polars_to_pandas[self.interval],
+                                                                 convention='start').asfreq().fillna(0).reset_index())
+
         returns.replace('date_index', returns.select(pl.col('date_index').cast(pl.Datetime)).to_series())
         # shift returns back by 'time' time steps
         shifted_returns = shift_by_time_step(pred_time, returns)
@@ -343,6 +347,9 @@ class FactorModel:
         expected_returns_index = np.array(expected_returns_index, dtype='datetime64[D]')
         expected_returns_index = np.unique(expected_returns_index)
         expected_returns.index = expected_returns_index
+        expected_returns = expected_returns.resample(polars_to_pandas[self.interval],
+                                                     convention='start').asfreq().fillna(0)
+
         print('Expected returns: ')
         print(f'{expected_returns}\n')
 
@@ -351,32 +358,38 @@ class FactorModel:
                                            k_pct=k_pct, long_pct=long_pct,
                                            long_only=long_only, short_only=short_only)
 
+        positions = positions.resample(polars_to_pandas[self.interval], convention='start').asfreq().fillna(0)
+        positions = positions.shift(-1).dropna()
         positions = pl.from_pandas(positions)
         positions = (
             positions.lazy()
             .with_columns(
-                pl.Series('date_index', expected_returns_index.tolist()).cast(pl.Datetime)
+                pl.Series('date_index', expected_returns_index.tolist()[:-1]).cast(pl.Datetime)
             )
             .collect(streaming=True)
         )
 
         # align positions and returns
         positions, returns = align_by_date_index(positions, returns)
-
         # calculate back tested returns
         returns_index = returns.select(pl.col('date_index'))
-        positions.drop('date_index')
+        positions = positions.drop('date_index')
         returns_unindexed = returns.drop('date_index')
 
         returns_per_stock = returns_unindexed * positions
         portfolio_returns = returns_per_stock.sum(axis=1)
         portfolio_returns = portfolio_returns.rename('returns')
+        returns_index = returns_index.to_pandas().set_index('date_index') \
+            .resample(polars_to_pandas[self.interval], convention='start').asfreq().fillna(0).reset_index()
+        returns_index = pl.from_pandas(returns_index).to_series()
         portfolio_returns = portfolio_returns.to_frame().with_columns(returns_index)
 
+        portfolio_returns = portfolio_returns.with_columns(returns_index)
         portfolio_returns = portfolio_returns.to_pandas()
         portfolio_returns = portfolio_returns.set_index('date_index')
         returns = returns.to_pandas()
         returns = returns.set_index('date_index')
+        positions = positions.with_columns(returns_index)
         positions = positions.to_pandas().set_index('date_index')
 
         # importing here to avoid circular import
