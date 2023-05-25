@@ -7,7 +7,6 @@ from factorlib.factor_model import FactorModel
 from factorlib.transforms.expr_shortcuts import pct_change
 from factorlib.utils.system import get_data_dir, get_results_dir
 
-
 raw_data_dir = get_data_dir() / "raw"
 
 print('Reading in Stock Data...')
@@ -24,21 +23,22 @@ fff_daily = (
     pl.scan_csv(general_data_dir / 'fff_daily.csv', try_parse_dates=True)
     .collect(streaming=True)
 )
-fff_factor = Factor(name='fff', data=fff_daily, interval='1d', general_factor=True, tickers=tickers)
+fff_factor = Factor(name='fff', data=fff_daily, current_interval='1d', general_factor=True, tickers=tickers)
 
 fundamental_data_dir = get_data_dir() / 'fundamental'
-fundamentals_1 = pl.scan_csv(fundamental_data_dir / 'fundamentals_1.csv', try_parse_dates=True)\
+fundamentals1 = pl.scan_csv(fundamental_data_dir / 'fundamentals1_monthly.csv', try_parse_dates=True) \
     .collect(streaming=True)
-fundamentals_1_factor = Factor(name='fundamentals_1', data=fundamentals_1, interval='1mo', tickers=tickers)
+fundamentals1_factor = Factor(name='fundamentals_1', data=fundamentals1,
+                              current_interval='1mo', desired_interval='1d',
+                              tickers=tickers)
 
 model = FactorModel(tickers=tickers, interval='1d')
 
-model.add_factor(fff_factor)
-model.add_factor(fundamentals_1_factor)
+model.add_factor([fff_factor, fundamentals1_factor])
 
 stats = model.wfo(returns_data,
                   train_interval=relativedelta(years=5), anchored=False,  # interval parameters
-                  start_date=datetime(2014, 1, 1), end_date=datetime(2020, 1, 1),
+                  start_date=datetime(2013, 1, 1), end_date=datetime(2019, 1, 1),
                   k_pct=0.2, long_only=True)  # weight parameters
 
 stats.print_statistics_report()

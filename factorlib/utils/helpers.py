@@ -5,13 +5,14 @@ from datetime import datetime
 from factorlib.utils.datetime_maps import polars_to_pandas, pl_time_intervals
 
 
-def resample(data: pl.DataFrame, interval: str, melted=True):
+def resample(data: pl.DataFrame, current_interval: str, desired_interval: str, melted=True):
     """
     Resample a polars dataframe to the given `interval`.
 
     :param data: The polars dataframe to resample
-    :param interval: The interval with which to resample the dataframe. See /datetime_maps/polars_datetimes.json for
-                     valid string datetime intervals.
+    :param current_interval: The current interval of the data before resampling.
+    :param desired_interval: The interval with which to resample the dataframe. See /datetime_maps/polars_datetimes.json
+                             for valid string datetime intervals.
     :param melted: Whether the dataframe has been melted. If melted=True, the dataframe has already been melted and the
                    dataframe has duplicate dates in `date_index`, but unique combinations of dates and tickers in
                    `date_index` and `ticker`
@@ -19,39 +20,42 @@ def resample(data: pl.DataFrame, interval: str, melted=True):
     :return: The resampled dataframe.
     """
 
-    resampling_technique = _up_or_down_sample(data=data, resampling_interval=interval)
+    resampling_technique = _up_or_down_sample(data=data, input_interval=current_interval,
+                                              output_interval=desired_interval)
     if resampling_technique == 'downsample':
         if melted:  # include 'by' parameter with ticker column
             data = (
-                data.sort('date_index')
+                data.lazy()
+                .sort('date_index')
                 .set_sorted('date_index')
-                .groupby_dynamic('date_index', every=interval, by='ticker')
+                .groupby_dynamic('date_index', every=desired_interval, by='ticker')
                 .agg(pl.all().exclude('date_index').first())
+                .collect(streaming=True)
             )
         else:
             data = (
-                data.sort('date_index')
+                data.lazy()
+                .sort('date_index')
                 .set_sorted('date_index')
-                .groupby_dynamic('date_index', every=interval)
+                .groupby_dynamic('date_index', every=desired_interval)
                 .agg(pl.all().exclude('date_index').first())
+                .collect(streaming=True)
             )
     elif resampling_technique == 'upsample':
         if melted:
             data = (
                 data.sort('date_index')
                 .set_sorted('date_index')
-                .upsample(time_column='date_index', every=interval, by='ticker')
+                .upsample(time_column='date_index', every=desired_interval, by='ticker')
                 .select(pl.all().forward_fill())
             )
         else:
             data = (
                 data.sort('date_index')
                 .set_sorted('date_index')
-                .upsample(time_column='date_index', every=interval)
+                .upsample(time_column='date_index', every=desired_interval)
                 .select(pl.all().forward_fill())
             )
-    else:  # intervals are equal
-        data = data
     data.replace('date_index', data.select(pl.col('date_index').cast(pl.Datetime)).to_series())
     return data
 
@@ -234,29 +238,16 @@ def get_start_convention(date: datetime, interval: str):
     return end_convention
 
 
-def _up_or_down_sample(data: pl.DataFrame, resampling_interval: str):
+def _up_or_down_sample(data: pl.DataFrame, input_interval, output_interval: str):
     """
-    An internal helper function used in resample(data: pl.DataFrame, interval: str, melted=True) to determine
-    if the data requires sampling or down sampling depending on the `resampling_interval` and the 'date_index'
-    column of `data`.
+    An internal helper function used in resample(data: pl.DataFrame, current_interval: str, desired_interval: str,
+    melted=True) to determine if the data requires sampling or down sampling depending on the `resampling_interval`
+    and the 'date_index' column of `data`.
     """
 
-    unique_dates = (
-        data.lazy()
-        .select(
-            pl.col('date_index').unique()
-        )
-        .sort('date_index')
-        .set_sorted('date_index')
-        .collect(streaming=True)
-    )
-    first_date = unique_dates.item(0, 0)
-    second_date = unique_dates.item(1, 0)
-    num_min = (second_date - first_date).total_seconds() / 60
-
-    if num_min < pl_time_intervals[resampling_interval]:
+    if pl_time_intervals[input_interval] < pl_time_intervals[output_interval]:
         return 'downsample'
-    elif num_min > pl_time_intervals[resampling_interval]:
+    elif pl_time_intervals[input_interval] > pl_time_intervals[output_interval]:
         return 'upsample'
     else:
-        return 'don\'t waste time!'
+        return 'upsample'
