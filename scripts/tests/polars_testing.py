@@ -35,7 +35,7 @@ fundamentals1_factor = Factor(name='fundamentals_1', data=fundamentals1,
 model = FactorModel(tickers=tickers, interval='1d')
 
 model.add_factor([fff_factor, fundamentals1_factor])
-
+model.add_factor(fff_factor, replace=True)
 stats = model.wfo(returns_data,
                   train_interval=relativedelta(years=5), anchored=False,  # interval parameters
                   start_date=datetime(2013, 1, 1), end_date=datetime(2019, 1, 1),

@@ -87,11 +87,8 @@ class FactorModel:
                     )
                     .collect(streaming=True)
                 )
-                # TODO: We should make this a polars function using .rename(mapping: Dict[str, str]).
-                #       It wasn't working before when calling: self.factors.rename(cols_changes). Not sure why.
                 rename_map = dict(zip(cols_to_keep, cols_to_exclude))
                 self.factors.rename(rename_map)
-                # self.factors.columns = list(map(lambda x: x.replace("_right", ""), self.factors.columns))
 
             self.factors = self.factors.sort(['date_index', 'ticker'])
 
