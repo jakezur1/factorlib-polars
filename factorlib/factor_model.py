@@ -50,53 +50,58 @@ class FactorModel:
         self.latest_end = None
         self.model = None
 
-    def add_factor(self, factor: Factor, replace: bool = False) -> None:
+    def add_factor(self, factor: Factor | list[Factor], replace: bool = False) -> None:
         """
         Adds a factor to the model's factors dataframe.
 
-        :param factor: A Factor object that represents the factor to add to the model
+        :param factor: A Factor object or list of Factor objects that represents the factor(s) to add to the model.
         :param replace: If replace=True, the factor being added will replace the existing factor with the same name.
                         This param is most commonly used when loading a past model that has been saved, and modifying a
                         factor that had been previously added.
         """
-        factor.data = resample(data=factor.data, interval=self.interval)
 
-        if self.factors.is_empty():
-            self.factors = factor.data
-        else:
-            self.factors = (
-                self.factors.lazy()
-                .join(factor.data.lazy(), on=['date_index', 'ticker'], how='outer')
-                .collect(streaming=True)
-            )
+        if type(factor) == Factor:
+            factor = [factor]
 
-        if replace:
-            regex = re.compile(".*_right")
-            cols_to_keep = list(filter(regex.match, self.factors.columns))
-            cols_to_exclude = [col[:-6] for col in cols_to_keep]
-            self.factors = (
-                self.factors.lazy()
-                .select(
-                    pl.all().exclude(cols_to_exclude),
+        for curr_factor in factor:
+            curr_factor.data = resample(data=curr_factor.data, current_interval=curr_factor.interval,
+                                        desired_interval=self.interval)
+
+            if self.factors.is_empty():
+                self.factors = curr_factor.data
+            else:
+                self.factors = (
+                    self.factors.lazy()
+                    .join(curr_factor.data.lazy(), on=['date_index', 'ticker'], how='outer')
+                    .collect(streaming=True)
                 )
-                .collect(streaming=True)
-            )
-            # TODO: We should make this a polars function using .rename(mapping: Dict[str, str]).
-            #       It wasn't working before when calling: self.factors.rename(cols_changes). Not sure why.
-            self.factors.columns = list(map(lambda x: x.replace("_right", ""), self.factors.columns))
 
-        self.factors = self.factors.sort(['date_index', 'ticker'])
+            if replace:
+                regex = re.compile(".*_right")
+                cols_to_keep = list(filter(regex.match, self.factors.columns))
+                cols_to_exclude = [col[:-6] for col in cols_to_keep]
+                self.factors = (
+                    self.factors.lazy()
+                    .select(
+                        pl.all().exclude(cols_to_exclude),
+                    )
+                    .collect(streaming=True)
+                )
+                rename_map = dict(zip(cols_to_keep, cols_to_exclude))
+                self.factors.rename(rename_map)
 
-        if self.earliest_start is None:
-            self.earliest_start = factor.start
-        else:
-            if self.earliest_start < factor.start:
-                self.earliest_start = factor.start
-        if self.latest_end is None:
-            self.latest_end = factor.end
-        else:
-            if self.latest_end > factor.end:
-                self.latest_end = factor.end
+            self.factors = self.factors.sort(['date_index', 'ticker'])
+
+            if self.earliest_start is None:
+                self.earliest_start = curr_factor.start
+            else:
+                if self.earliest_start < curr_factor.start:
+                    self.earliest_start = curr_factor.start
+            if self.latest_end is None:
+                self.latest_end = curr_factor.end
+            else:
+                if self.latest_end > curr_factor.end:
+                    self.latest_end = curr_factor.end
 
     def predict(self, factors: pl.DataFrame) -> np.ndarray:
         """Given a polars dataframe of factors, predict the next intervals returns."""
@@ -117,6 +122,8 @@ class FactorModel:
         """
         Perform walk-forward optimization for backtesting.
 
+        Required: The interval of returns must match the interval of the model.
+
         :param returns: A polars dataframe of all the returns for all of this model's `tickers` at each interval
         :param train_interval: The total interval with which to train the model. If anchor=True, this is the initial
                                training interval on the first iteration. If anchor=False, this is the rolling window
@@ -132,12 +139,12 @@ class FactorModel:
         :param k_pct: The top and/or bottom k percent of stocks to trade.
         :param long_pct: The percentage of stocks to long. This is only applicable if `long_only` and `short_only`
                          are both False.
-        :param long_only:
+        :param long_only: Equivalent to setting long_pct=1.0.
 
-        :param short_only: Equivalent to setting long_pct=0.0
-        :param pred_time: Number of time steps ahead to predict. Formatted as `t+{time steps}`
+        :param short_only: Equivalent to setting long_pct=0.0.
+        :param pred_time: Number of time steps ahead to predict. Formatted as `t+{time steps}`.
         :param train_freq: The frequency with which to retrain the interval.
-        :param candidates: TO BE IMPLEMENTED
+        :param candidates: TODO: Implement candidates as a dict that holes yearly SP500 candidates.
         :param kwargs: Additional key word arguments to be given to the XGBoostRegressor. These can be regularization
                        parameters, training parameters, or any other parameter of XGBoostRegressor.
         :return: A statistics object containing all the information gathered while backtesting. See Statistics
@@ -164,18 +171,19 @@ class FactorModel:
         else:
             end_date = self.latest_end
 
-        # start_date = _get_end_convention(start_date, self.interval)
-        # end_date = _get_end_convention(end_date, self.interval)
-
         print('Starting Walk-Forward Optimization from', start_date, 'to', end_date, 'with a',
               train_interval.years, 'year training interval')
 
-        shifted_returns = resample(returns, self.interval, melted=False)
+        # cast returns date_index to datetime
+        returns = pl.from_pandas(
+            returns.to_pandas().set_index('date_index').resample(polars_to_pandas[self.interval],
+                                                                 convention='start').asfreq().fillna(0).reset_index())
+
+        returns.replace('date_index', returns.select(pl.col('date_index').cast(pl.Datetime)).to_series())
         # shift returns back by 'time' time steps
-        shifted_returns = shift_by_time_step(pred_time, shifted_returns)
+        shifted_returns = shift_by_time_step(pred_time, returns)
 
         # align factor dates to be at the latest first date and earliest last date
-        shifted_returns = shifted_returns.select(pl.col('date_index').cast(pl.Datetime), pl.all().exclude('date_index'))
         _, shifted_returns = align_by_date_index(self.factors, shifted_returns)
 
         # stack the returns and sort on date_index and ticker
@@ -300,6 +308,8 @@ class FactorModel:
                     )
                     prediction_data = indexed_prediction_data.drop(['date_index', 'ticker'])
 
+                    if len(curr_predictions) != len(prediction_data):
+                        pass
                     curr_predictions[ticker] = self.model.predict(prediction_data).flatten()
                     curr_index = (
                         indexed_prediction_data.lazy()
@@ -334,11 +344,12 @@ class FactorModel:
             training_end = offset_datetime(training_end, interval=frequency)
             training_end = get_start_convention(training_end, self.interval)
 
-        training_spearman = training_spearman.resample(polars_to_pandas[self.interval]).bfill()
-
         expected_returns_index = np.array(expected_returns_index, dtype='datetime64[D]')
         expected_returns_index = np.unique(expected_returns_index)
         expected_returns.index = expected_returns_index
+        expected_returns = expected_returns.resample(polars_to_pandas[self.interval],
+                                                     convention='start').asfreq().fillna(0)
+
         print('Expected returns: ')
         print(f'{expected_returns}\n')
 
@@ -347,28 +358,38 @@ class FactorModel:
                                            k_pct=k_pct, long_pct=long_pct,
                                            long_only=long_only, short_only=short_only)
 
+        positions = positions.resample(polars_to_pandas[self.interval], convention='start').asfreq().fillna(0)
+        positions = positions.shift(-1).dropna()
         positions = pl.from_pandas(positions)
-        positions = positions.lazy().with_columns(
-            pl.Series('date_index', expected_returns_index.tolist()).cast(pl.Datetime)
-        ).collect(streaming=True)
+        positions = (
+            positions.lazy()
+            .with_columns(
+                pl.Series('date_index', expected_returns_index.tolist()[:-1]).cast(pl.Datetime)
+            )
+            .collect(streaming=True)
+        )
 
         # align positions and returns
         positions, returns = align_by_date_index(positions, returns)
-
         # calculate back tested returns
         returns_index = returns.select(pl.col('date_index'))
-        positions.drop('date_index')
+        positions = positions.drop('date_index')
         returns_unindexed = returns.drop('date_index')
 
         returns_per_stock = returns_unindexed * positions
         portfolio_returns = returns_per_stock.sum(axis=1)
         portfolio_returns = portfolio_returns.rename('returns')
+        returns_index = returns_index.to_pandas().set_index('date_index') \
+            .resample(polars_to_pandas[self.interval], convention='start').asfreq().fillna(0).reset_index()
+        returns_index = pl.from_pandas(returns_index).to_series()
         portfolio_returns = portfolio_returns.to_frame().with_columns(returns_index)
 
+        portfolio_returns = portfolio_returns.with_columns(returns_index)
         portfolio_returns = portfolio_returns.to_pandas()
         portfolio_returns = portfolio_returns.set_index('date_index')
         returns = returns.to_pandas()
         returns = returns.set_index('date_index')
+        positions = positions.with_columns(returns_index)
         positions = positions.to_pandas().set_index('date_index')
 
         # importing here to avoid circular import
@@ -397,9 +418,8 @@ class FactorModel:
                        long_only: bool = False,
                        short_only: bool = False) -> pd.Series:
         """
-        Given a row of returns and a percentage of stocks to long and short,
-        return a row of positions of equal long and short positions, with weights
-        equal to long_pct and 1 - long_pct respectively.
+        Given a row of returns and a percentage of stocks to long and short, return a row of positions of equal
+        long and short positions, with weights equal to long_pct and 1 - long_pct respectively.
 
         :param row: Intended to be used with pandas' .apply function. The first argument is reserved for the series
                     that will be operated on.

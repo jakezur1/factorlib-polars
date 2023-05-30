@@ -1,6 +1,9 @@
 import polars as pl
-from .utils.helpers import resample
+import pandas as pd
+import numpy as np
 import warnings
+
+from .utils.helpers import resample
 from .utils.warnings import ParameterOverride
 
 
@@ -11,15 +14,20 @@ class Factor:
     """
 
     def __init__(self, name: str = None, data: pl.DataFrame = None,
-                 interval: str = '1d', general_factor: bool = False,
-                 tickers: [str] = None, transforms=None):
+                 current_interval: str = '1d', general_factor: bool = False,
+                 desired_interval: str = None, tickers: [str] = None,
+                 transforms=None):
         """
         :param name: The name of the factor. If multiple factors are included in this object, name it by a
                      general category that separates this dataset from other factor objects.
         :param data: The polars dataframe that will serve as the data for this factor. The dataframe must have a date
                      column called `date_index` which must have type date or datetime. The dataframe must also contain
                      a ticker column called `ticker`, or be a `general_factor`.
-        :param interval: The frequency of the time series. This is the interval between each row of the date columns.
+        :param current_interval: The current frequency of the time series. This is the interval between each row of the
+                                 date column.
+        :param desired_interval: The interval that the factor will be resampled to. This is parameter exists so that
+                                 factorlib can ensure that your factors have the same frequency that you wish to
+                                 trade on in backtesting.
         :param general_factor: True if this factor is a general factor for all tickers. If so, this factor must have
                                a ticker column.
         :param tickers: A list of tickers. This will only be used if the factor is a `general_factor`. If so, it will
@@ -41,14 +49,14 @@ class Factor:
                                           'you plan to use in the factor model to which this factor will be added.'
 
         if tickers is not None and general_factor is False:
-            warnings.warn(f'You have passed a `tickers` list for factor called {name}, but this factor is not a '
-                          f'`general_factor` and so `tickers` will not being used.', ParameterOverride)
+            warnings.warn(f'You have passed a `tickers` list for the factor named {name}, but this factor is '
+                          'not a `general_factor` and so `tickers` will not being used.', category=ParameterOverride)
 
         if transforms is None:
             transforms = []
 
         self.name = name
-        self.interval = interval
+        self.interval = current_interval
         data = data.sort(by='date_index').set_sorted('date_index')
         try:
             data = data.with_columns(
@@ -57,11 +65,23 @@ class Factor:
         except Exception:
             pass
 
-        self.data = resample(data=data, interval=interval)
+        if not general_factor:
+            data = data.drop_nulls(subset='date_index')
+
+        if desired_interval is not None:
+            self.data = resample(data=data, current_interval=self.interval, desired_interval=desired_interval,
+                                 melted=(not general_factor))
+            self.interval = desired_interval
+        else:
+            data.replace('date_index', data.select(pl.col('date_index').cast(pl.Datetime)).to_series())
+            self.data = data
 
         self.transforms = transforms
-        self.start = self.data.select(pl.col('date_index').first()).item(0, 0)
-        self.end = self.data.select(pl.col('date_index').last()).item(0, 0)
+
+        self.data.sort('date_index')
+        dates = data.select(pl.col('date_index').drop_nulls()).to_series().to_list()
+        self.start = dates[0]
+        self.end = dates[-1]
 
         if general_factor:
             tickers_df = pl.DataFrame({'ticker': tickers})

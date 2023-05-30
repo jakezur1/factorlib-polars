@@ -129,12 +129,10 @@ dmypy.json
 .pyre/
 
 /data/
-factors/
 *.p
 *.pkl
 *.png
 *.csv
-*.txt
 *.parquet
 .idea/
-/scripts/testing/
+/scripts/tests/
