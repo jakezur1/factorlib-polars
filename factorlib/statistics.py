@@ -2,18 +2,21 @@ import pandas as pd
 import numpy as np
 import quantstats as qs
 import yfinance as yf
-from .factor_model import FactorModel
 from scipy import stats
+from sklearn.metrics import mutual_info_score
 import random
 from prettytable import PrettyTable
-from factorlib.transforms.transforms import _compsum
 import matplotlib.pyplot as plt
 import pickle
 import shap
 from pathlib import Path
+
+from factorlib.transforms.transforms import _compsum
 from factorlib.utils.helpers import offset_datetime
 from factorlib.utils.system import get_results_dir
 from factorlib.utils.datetime_maps import time_delta_intervals, polars_to_pandas
+from factorlib.factor_model import FactorModel
+
 
 
 class Statistics:
@@ -126,17 +129,15 @@ class Statistics:
         spearman_rank = spearman_ranks.mean()
         return spearman_rank
 
-    def compute_correlations(self):
-        new_df = self.model.factors[self.model.tickers[0]].corr()
-        for ticker in self.model.tickers[1:]:
-            new_df.add(self.model.factors[ticker].corr())
-        corr = new_df / len(self.model.tickers)
-        corr = corr.style.background_gradient(axis=None, cmap='YlGn')
-        return corr
+    def compute_hit_ratio(self):
+        direction_true = np.sign(self.stock_returns)
+        direction_pred = np.sign(self.predicted_returns)
+        hit_ratio = np.mean(direction_true == direction_pred)
+        return hit_ratio
 
-    def get_factor_names(self):
-        for factor in self.model.factors.columns.get_level_values(1).unique():
-            print(factor)
+    def compute_mutual_info(self):
+        mi = mutual_info_score(self.stock_returns, self.predicted_returns)
+        return mi
 
     def plot_beeswarm_shaps(self, num_features: int = None, feature: str = None):
         if num_features is None:

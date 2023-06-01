@@ -28,7 +28,6 @@ fff_daily = (
 
 fff_factor = Factor(name='fff', data=fff_daily, current_interval='1d', general_factor=True, tickers=tickers)
 
-
 print('Creating Fundamental Features...')
 # fundamentals1_monthly
 fundamental_data_dir = get_data_dir() / 'fundamental'
@@ -40,8 +39,13 @@ fundamentals1_factor = Factor(name='fundamentals1', data=fundamentals1,
 # div_season
 div_season = pl.scan_csv(fundamental_data_dir / 'div_season.csv', try_parse_dates=True) \
     .collect(streaming=True)
-div_season_factor = Factor(name='div_season', data=fundamentals1)
+div_season_factor = Factor(name='div_season', data=div_season, current_interval='1mo', desired_interval='1d')
 
+print('Creating Momentum Features...')
+# trend_factor
+momentum_dir = get_data_dir() / 'momentum'
+trend_factor_data = pl.scan_csv(momentum_dir / 'trend_factor.csv', try_parse_dates=True).collect(streaming=True)
+trend_factor = Factor(name='trend_factor', data=trend_factor_data, current_interval='1mo', desired_interval='1d')
 
 print('Creating Model and Adding Factors...')
 model = FactorModel(tickers=tickers, interval='1d')
@@ -49,6 +53,7 @@ model = FactorModel(tickers=tickers, interval='1d')
 model.add_factor(fff_factor)
 model.add_factor(fundamentals1_factor)
 model.add_factor(div_season_factor)
+model.add_factor(trend_factor)
 
 stats = model.wfo(returns_data,
                   train_interval=relativedelta(years=5), anchored=False,  # interval parameters

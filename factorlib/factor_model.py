@@ -308,7 +308,7 @@ class FactorModel:
                     )
                     prediction_data = indexed_prediction_data.drop(['date_index', 'ticker'])
 
-                    if len(curr_predictions) != len(prediction_data):
+                    if len(curr_predictions) != len(indexed_prediction_data):
                         pass
                     curr_predictions[ticker] = self.model.predict(prediction_data).flatten()
                     curr_index = (

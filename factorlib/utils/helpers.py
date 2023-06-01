@@ -206,7 +206,6 @@ def clean_data(X: pl.DataFrame, y: pl.DataFrame, col_thresh=0.5):
         )
         .collect(streaming=True)
     )
-    # X.replace([np.inf, -np.inf], 0, inplace=True)  make different in polars
     return X, y
 
 
