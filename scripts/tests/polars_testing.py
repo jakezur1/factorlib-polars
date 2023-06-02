@@ -46,12 +46,20 @@ ch_tax = pl.scan_csv(fundamental_data_dir / 'ch_tax.csv', try_parse_dates=True) 
     .collect(streaming=True)
 ch_tax_factor = Factor(name='ch_tax', data=ch_tax, current_interval='1mo', desired_interval='1d')
 
-
 print('Creating Momentum Features...')
 # trend_factor
 momentum_dir = get_data_dir() / 'momentum'
 trend_factor_data = pl.scan_csv(momentum_dir / 'trend_factor.csv', try_parse_dates=True).collect(streaming=True)
 trend_factor = Factor(name='trend_factor', data=trend_factor_data, current_interval='1mo', desired_interval='1d')
+
+mom_season_short_monthly = pl.scan_csv(momentum_dir / 'mom_season_short_monthly.csv',
+                                       try_parse_dates=True).collect(streaming=True)
+mom_season_short_monthly_factor = Factor(name='mom_season_short_monthly', data=mom_season_short_monthly,
+                                         current_interval='1mo', desired_interval='1d')
+mom_season_short_daily = pl.scan_csv(momentum_dir / 'mom_season_short_daily.csv',
+                                     try_parse_dates=True).collect(streaming=True)
+mom_season_short_daily_factor = Factor(name='mom_season_short_daily', data=mom_season_short_daily,
+                                       current_interval='1d')
 
 print('Creating Model and Adding Factors...')
 model = FactorModel(tickers=tickers, interval='1d')
@@ -60,6 +68,8 @@ model.add_factor(fff_factor)
 model.add_factor(fundamentals1_factor)
 model.add_factor(div_season_factor)
 model.add_factor(trend_factor)
+model.add_factor(mom_season_short_monthly_factor)
+model.add_factor(mom_season_short_daily_factor)
 
 stats = model.wfo(returns_data,
                   train_interval=relativedelta(years=5), anchored=False,  # interval parameters
