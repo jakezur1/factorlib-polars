@@ -41,6 +41,12 @@ div_season = pl.scan_csv(fundamental_data_dir / 'div_season.csv', try_parse_date
     .collect(streaming=True)
 div_season_factor = Factor(name='div_season', data=div_season, current_interval='1mo', desired_interval='1d')
 
+# ch_tax
+ch_tax = pl.scan_csv(fundamental_data_dir / 'ch_tax.csv', try_parse_dates=True) \
+    .collect(streaming=True)
+ch_tax_factor = Factor(name='ch_tax', data=ch_tax, current_interval='1mo', desired_interval='1d')
+
+
 print('Creating Momentum Features...')
 # trend_factor
 momentum_dir = get_data_dir() / 'momentum'
@@ -63,3 +69,4 @@ stats = model.wfo(returns_data,
 stats.print_statistics_report()
 stats.get_html()
 stats.save(get_results_dir() / 'wfo_stats.pkl')
+model.save(get_results_dir() / 'current_model.pkl')

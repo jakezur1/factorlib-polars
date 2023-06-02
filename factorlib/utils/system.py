@@ -41,6 +41,11 @@ def silence_warnings():
     warnings.filterwarnings(action='ignore', message='ntree_limit is deprecated, use `iteration_range` or '
                                                      'model slicing instead.')
 
+    warnings.filterwarnings(action='ignore', message='Clustering metrics expects discrete values but received '
+                                                     'continuous values for label, and continuous values for target')
+    warnings.filterwarnings(action='ignore', message='Clustering metrics expects discrete values but received '
+                                                     'binary values for label, and continuous values for target')
+
 
 def _get_defining_class(meth) -> any:
     if inspect.ismethod(meth):

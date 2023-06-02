@@ -36,6 +36,7 @@ class Statistics:
             self.interval = polars_to_pandas[self.model.interval]
             self.predicted_returns = predicted_returns
             self.stock_returns = stock_returns
+            self.stock_returns, self.predicted_returns = self.stock_returns.align(self.predicted_returns, join='inner')
             self.portfolio_returns = portfolio_returns
             self.position_weights = position_weights
             self.training_spearman = training_spearman
@@ -132,12 +133,16 @@ class Statistics:
     def compute_hit_ratio(self):
         direction_true = np.sign(self.stock_returns)
         direction_pred = np.sign(self.predicted_returns)
-        hit_ratio = np.mean(direction_true == direction_pred)
+        direction_true, direction_pred = direction_true.align(direction_pred, join='inner')
+        hit_ratio = np.mean(np.mean(direction_true == direction_pred))
         return hit_ratio
 
     def compute_mutual_info(self):
-        mi = mutual_info_score(self.stock_returns, self.predicted_returns)
-        return mi
+        mi_total = 0
+        for stock in self.stock_returns.columns:
+            mi_total += mutual_info_score(self.stock_returns[stock], self.predicted_returns[stock])
+        mi_avg = mi_total / len(self.stock_returns.columns)
+        return mi_avg
 
     def plot_beeswarm_shaps(self, num_features: int = None, feature: str = None):
         if num_features is None:
@@ -173,6 +178,9 @@ class Statistics:
         volatility = ['volatility']
         win_rate = ['win rate']
         print('Spearman correlation: ' + str(self.compute_spearman_rank()))
+        print('Hit Ratio: ' + str(self.compute_hit_ratio()))
+        print('Mutual Information: ' + str(self.compute_mutual_info()))
+
         # se lf.compute_correlations()
         for returns in self.all_returns:
             cum_returns.append(str(round((_compsum(returns) * 100).iloc[-1].values[0], 2)) + '%')

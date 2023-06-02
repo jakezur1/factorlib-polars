@@ -5,21 +5,23 @@ from tqdm import tqdm
 import os
 
 API_KEY = os.environ.get('API_KEY')
+
 raw_data_dir = get_data_dir() / 'raw'
 tickers = pd.read_csv(raw_data_dir / 'tickers_finance_statement.csv', index_col=0)
-call_count = 0
-limit = 400
 
 base_url = 'https://financialmodelingprep.com'
-all_financial_statements = pd.DataFrame()
+data_to_download = 'earnings-surprises'
+version = 'v3'
 
+all_fmp_data = pd.DataFrame()
 for ticker in tqdm(tickers['ticker']):
-    url = base_url + f'/api/v3/income-statement/{ticker}?period=quarter&data_type=csv&limit=400&apikey={API_KEY}'
+    url = base_url + f'/api/{version}/{data_to_download}/{ticker}?period=quarter&apikey={API_KEY}'
     response = requests.get(url)
     if response.status_code == 200:
         curr_ticker = pd.DataFrame(response.json())
-        all_financial_statements = pd.concat([all_financial_statements, curr_ticker])
+        all_fmp_data = pd.concat([all_fmp_data, curr_ticker])
     else:
         print(f'Request failed with status code {response.status_code}')
 
-all_financial_statements.to_csv(raw_data_dir / 'financial_statements.csv')
+filename = data_to_download.replace("-", "_")
+all_fmp_data.to_csv(raw_data_dir / f'{filename}.csv')
