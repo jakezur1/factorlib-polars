@@ -144,7 +144,7 @@ class FactorModel:
         :param short_only: Equivalent to setting long_pct=0.0.
         :param pred_time: Number of time steps ahead to predict. Formatted as `t+{time steps}`.
         :param train_freq: The frequency with which to retrain the interval.
-        :param candidates: TODO: Implement candidates as a dict that holes yearly SP500 candidates.
+        :param candidates: TODO: Implement candidates as a dict that holds yearly SP500 candidates.
         :param kwargs: Additional key word arguments to be given to the XGBoostRegressor. These can be regularization
                        parameters, training parameters, or any other parameter of XGBoostRegressor.
         :return: A statistics object containing all the information gathered while backtesting. See Statistics
@@ -174,12 +174,17 @@ class FactorModel:
         print('Starting Walk-Forward Optimization from', start_date, 'to', end_date, 'with a',
               train_interval.years, 'year training interval')
 
-        # cast returns date_index to datetime
-        returns = pl.from_pandas(
-            returns.to_pandas().set_index('date_index').resample(polars_to_pandas[self.interval],
-                                                                 convention='start').asfreq().fillna(0).reset_index())
+        returns_are_melted = False
+        if 'ticker' in returns.columns:
+            returns_are_melted = True
+
+        string_cols = ['date_index']
+        if returns_are_melted:
+            string_cols = ['date_index', 'ticker']
 
         returns.replace('date_index', returns.select(pl.col('date_index').cast(pl.Datetime)).to_series())
+        returns = returns.fill_null(0)
+        returns = returns.select(pl.col(string_cols), pl.all().exclude(string_cols).cast(pl.Float64))
         # shift returns back by 'time' time steps
         shifted_returns = shift_by_time_step(pred_time, returns)
 
@@ -188,17 +193,20 @@ class FactorModel:
 
         # stack the returns and sort on date_index and ticker
         start = time.time()
-        melted_returns = (
-            shifted_returns.lazy()
-            .melt(id_vars=['date_index'])
-            .select(
-                pl.col('date_index'),
-                pl.col('variable').alias('ticker'),
-                pl.col('value').alias('returns')
+        if 'ticker' not in returns.columns:
+            melted_returns = (
+                shifted_returns.lazy()
+                .melt(id_vars=['date_index'])
+                .select(
+                    pl.col('date_index'),
+                    pl.col('variable').alias('ticker'),
+                    pl.col('value').alias('returns')
+                )
+                .sort(by=['date_index', 'ticker'])
+                .collect(streaming=True)
             )
-            .sort(by=['date_index', 'ticker'])
-            .collect(streaming=True)
-        )
+        else:
+            melted_returns = returns
 
         # sort factors on date_index and ticker
         self.factors = self.factors.lazy().sort(by=['date_index', 'ticker']).collect(streaming=True)
@@ -283,7 +291,8 @@ class FactorModel:
                     .collect(streaming=True, no_optimization=True)
                 )
                 returns_for_spearman = returns_for_spearman.to_pandas().set_index('date_index')
-                spearman = returns_for_spearman.corrwith(training_predictions, method='spearman', axis=1).mean()
+                spearman = returns_for_spearman.corrwith(training_predictions, method='spearman', axis=1,
+                                                         numeric_only=True).mean()
                 spearman = pd.Series(spearman, index=[training_predictions.index[-1]])
                 training_spearman = pd.concat([training_spearman, spearman])
 
@@ -295,21 +304,27 @@ class FactorModel:
             pred_end = offset_datetime(training_end, interval=frequency)
 
             curr_predictions = pd.DataFrame()
+
             for ticker in self.tickers:
-                try:
+                if len(self.factors.lazy()
+                        .filter(
+                            ((pl.col('date_index').is_between(pred_start, pred_end, closed="left")) &
+                             (pl.col('ticker') == str(ticker)))
+                        ).collect(streaming=True)) != 0:
                     indexed_prediction_data = (
                         self.factors.lazy()
                         .filter(
                             ((pl.col('date_index').is_between(pred_start, pred_end, closed="left")) &
                              (pl.col('ticker') == str(ticker)))
                         )
-                        .sort('date_index')
-                        .collect(streaming=True)
+                        .sort('date_index').collect(streaming=True, no_optimization=True)
                     )
                     prediction_data = indexed_prediction_data.drop(['date_index', 'ticker'])
 
-                    if len(curr_predictions) != len(indexed_prediction_data):
+                    # debugging point to find broken tickers
+                    if ticker == 'DE':
                         pass
+
                     curr_predictions[ticker] = self.model.predict(prediction_data).flatten()
                     curr_index = (
                         indexed_prediction_data.lazy()
@@ -320,8 +335,11 @@ class FactorModel:
                         .to_series()
                         .to_list()
                     )
-                except pl.exceptions.ColumnNotFoundError:
-                    curr_predictions[ticker] = [np.nan] * len(pd.date_range(pred_start, pred_end,
+                else:
+                    curr_predictions[ticker] = [np.nan] * len(pd.date_range(pred_start,
+                                                                            offset_datetime(pred_end,
+                                                                                            interval='1d',
+                                                                                            sign=-1),
                                                                             freq=polars_to_pandas[self.interval]))
                     curr_index = (
                         indexed_prediction_data.lazy()
@@ -333,7 +351,7 @@ class FactorModel:
                         .to_list()
                     )
 
-            expected_returns = pd.concat([expected_returns, curr_predictions], axis=0)
+            expected_returns = pd.concat([expected_returns, curr_predictions])
             expected_returns_index.extend(curr_index)
 
             # calculate new intervals to train
@@ -370,12 +388,12 @@ class FactorModel:
         )
 
         # align positions and returns
-        positions, returns = align_by_date_index(positions, returns)
-        # calculate back tested returns
+        positions, returns = pl.align_frames(positions, returns, on='date_index', how='left')
         returns_index = returns.select(pl.col('date_index'))
-        positions = positions.drop('date_index')
-        returns_unindexed = returns.drop('date_index')
+        positions = positions.lazy().select(pl.all().exclude('date_index')).collect(streaming=True)
+        returns_unindexed = returns.select(positions.columns)
 
+        # calculate back tested returns
         returns_per_stock = returns_unindexed * positions
         portfolio_returns = returns_per_stock.sum(axis=1)
         portfolio_returns = portfolio_returns.rename('returns')
@@ -436,9 +454,13 @@ class FactorModel:
         indices = np.argsort(row)[:-num_na]  # sorted in ascending order
         if num_na == 0:
             indices = np.argsort(row)  # sorted in ascending order
+
         k = int(np.floor(len(indices) * k_pct))
+        if k == 0:  # if there are only 3 tickers to choose from, k floors to 0.
+            k = 1
+
         bottomk = indices[:k]
-        topk = indices[-k + 1:]
+        topk = indices[-k:]
         positions = [0] * len(row)
 
         if long_only:
@@ -447,9 +469,10 @@ class FactorModel:
             long_pct = 0.0
 
         for i in topk:
-            positions[i] = round((1 / k) * long_pct, 3)
+            positions[i] = round((1 / k) * long_pct, 6)
         for i in bottomk:
-            positions[i] = round((-1 / k) * (1 - long_pct), 3)
+            positions[i] = round((-1 / k) * (1 - long_pct), 6)
+
         return pd.Series(positions, index=self.tickers)
 
     def _get_model(self, model, **kwargs):

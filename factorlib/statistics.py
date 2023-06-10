@@ -41,8 +41,8 @@ class Statistics:
             self.position_weights = position_weights
             self.training_spearman = training_spearman
             self.shap_values = shap_values
-            self.testing_spearman = predicted_returns.corrwith(stock_returns, method='spearman', axis=1).expanding(1) \
-                                        .mean()[10:]
+            self.testing_spearman = predicted_returns.corrwith(stock_returns, method='spearman', axis=1,
+                                                               numeric_only=True).expanding(1).mean()[10:]
 
             self.portfolio_returns.index = pd.to_datetime(self.portfolio_returns.index).tz_localize(None) \
                 .floor('D')
@@ -126,7 +126,8 @@ class Statistics:
         return paired_t_tests
 
     def compute_spearman_rank(self):
-        spearman_ranks = self.stock_returns.corrwith(self.predicted_returns, method='spearman', axis=1)
+        spearman_ranks = self.stock_returns.corrwith(self.predicted_returns, method='spearman',
+                                                     axis=1, numeric_only=True)
         spearman_rank = spearman_ranks.mean()
         return spearman_rank
 
@@ -135,6 +136,7 @@ class Statistics:
         direction_pred = np.sign(self.predicted_returns)
         direction_true, direction_pred = direction_true.align(direction_pred, join='inner')
         hit_ratio = np.mean(np.mean(direction_true == direction_pred))
+
         return hit_ratio
 
     def compute_mutual_info(self):

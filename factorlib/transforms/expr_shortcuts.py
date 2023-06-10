@@ -16,3 +16,7 @@ def account_for_split_factor(closes_col: str, split_col: str) -> pl.Expr:
     """
 
     return (pl.col(closes_col) * pl.col(split_col)).alias(f'{closes_col}_with_splits')
+
+
+def calculate_returns(s: pl.Series) -> pl.Series:
+    return s / s.shift() - 1
