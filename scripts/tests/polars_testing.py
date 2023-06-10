@@ -1,80 +1,103 @@
+import json
 import polars as pl
+import pandas as pd
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 
 from factorlib.factor import Factor
 from factorlib.factor_model import FactorModel
 from factorlib.utils.system import get_data_dir, get_results_dir
+from factorlib.transforms.expr_shortcuts import calculate_returns
 
 raw_data_dir = get_data_dir() / "raw"
 
 print('Reading in Stock Data...')
-stocks_data = pl.scan_csv(raw_data_dir / 'spy_data_daily.csv', try_parse_dates=True).rename(
-    {'Date': 'date_index'}).collect(streaming=True)
+# training_tickers = pd.read_csv(raw_data_dir / 'tickers_to_train.csv')['ticker'].tolist()
+# stocks_data = (
+#     pl.scan_csv(raw_data_dir / 'ohclv_daily.csv', try_parse_dates=True)
+#     .rename(
+#         {'datadate': 'date_index', 'tic': 'ticker'}
+#     )
+#     .select(
+#         pl.col('date_index').cast(pl.Datetime),
+#         pl.col('ticker'),
+#         pl.col('prccd').cast(pl.Float64)
+#     )
+#     .filter(
+#         pl.col('ticker').is_in(training_tickers)
+#     )
+#     .collect(streaming=True)
+# )
+tradeable_tickers = pd.read_csv(raw_data_dir / 'tickers_to_trade.csv')['ticker'].tolist()
+print("Universe of Tickers: ", len(tradeable_tickers), " Total")
 
-tickers = stocks_data.columns[1:]
-print("Universe of Tickers: ", len(tickers), " Total")
-stocks_data = stocks_data.select(pl.col('date_index'), pl.all().exclude('date_index').cast(float))
-returns_data = stocks_data.with_columns(pl.col('date_index'),
-                                        pl.all().exclude('date_index').pct_change())
+returns_data = pl.read_csv(raw_data_dir / 'training_returns.csv', try_parse_dates=True)
 
 print('Creating General Features...')
 # fff
 general_data_dir = get_data_dir() / 'general'
-fff_daily = (
-    pl.scan_csv(general_data_dir / 'fff_daily.csv', try_parse_dates=True)
-    .collect(streaming=True)
-)
-
-fff_factor = Factor(name='fff', data=fff_daily, current_interval='1d', general_factor=True, tickers=tickers)
+# fff_daily = (
+#     pl.scan_csv(general_data_dir / 'fff_daily.csv', try_parse_dates=True)
+#     .collect(streaming=True)
+# )
+#
+# fff_factor = Factor(name='fff', data=fff_daily, current_interval='1d', general_factor=True, tickers=tickers)
 
 print('Creating Fundamental Features...')
 # fundamentals1_monthly
 fundamental_data_dir = get_data_dir() / 'fundamental'
-fundamentals1 = pl.scan_csv(fundamental_data_dir / 'fundamentals1_monthly.csv', try_parse_dates=True) \
-    .collect(streaming=True)
-fundamentals1_factor = Factor(name='fundamentals1', data=fundamentals1,
-                              current_interval='1mo', desired_interval='1d')
+ir_pe = pl.scan_csv(fundamental_data_dir / 'ir_pe.csv', try_parse_dates=True).collect(streaming=True)
+ir_pe_factor = Factor(name='ir_pe', data=ir_pe,
+                      current_interval='1mo', desired_interval='1d')
 
 # div_season
-div_season = pl.scan_csv(fundamental_data_dir / 'div_season.csv', try_parse_dates=True) \
-    .collect(streaming=True)
-div_season_factor = Factor(name='div_season', data=div_season, current_interval='1mo', desired_interval='1d')
+# div_season = pl.scan_csv(fundamental_data_dir / 'div_season.csv', try_parse_dates=True) \
+#     .collect(streaming=True)
+# div_season_factor = Factor(name='div_season', data=div_season, current_interval='1mo', desired_interval='1d')
 
 # ch_tax
-ch_tax = pl.scan_csv(fundamental_data_dir / 'ch_tax.csv', try_parse_dates=True) \
-    .collect(streaming=True)
-ch_tax_factor = Factor(name='ch_tax', data=ch_tax, current_interval='1mo', desired_interval='1d')
+# ch_tax = pl.scan_csv(fundamental_data_dir / 'ch_tax.csv', try_parse_dates=True) \
+#     .collect(streaming=True)
+# ch_tax_factor = Factor(name='ch_tax', data=ch_tax, current_interval='1mo', desired_interval='1d')
+#
+# asset_growth = pl.scan_csv(fundamental_data_dir / 'asset_growth.csv', try_parse_dates=True) \
+#     .collect(streaming=True)
+# asset_growth_factor = Factor(name='asset_growth', data=asset_growth, current_interval='1mo', desired_interval='1d')
 
 print('Creating Momentum Features...')
 # trend_factor
-momentum_dir = get_data_dir() / 'momentum'
-trend_factor_data = pl.scan_csv(momentum_dir / 'trend_factor.csv', try_parse_dates=True).collect(streaming=True)
-trend_factor = Factor(name='trend_factor', data=trend_factor_data, current_interval='1mo', desired_interval='1d')
+# momentum_dir = get_data_dir() / 'momentum'
+# trend_factor_data = pl.scan_csv(momentum_dir / 'trend_factor.csv', try_parse_dates=True).collect(streaming=True)
+# trend_factor = Factor(name='trend_factor', data=trend_factor_data, current_interval='1mo', desired_interval='1d')
 
-mom_season_short_monthly = pl.scan_csv(momentum_dir / 'mom_season_short_monthly.csv',
-                                       try_parse_dates=True).collect(streaming=True)
-mom_season_short_monthly_factor = Factor(name='mom_season_short_monthly', data=mom_season_short_monthly,
-                                         current_interval='1mo', desired_interval='1d')
-mom_season_short_daily = pl.scan_csv(momentum_dir / 'mom_season_short_daily.csv',
-                                     try_parse_dates=True).collect(streaming=True)
-mom_season_short_daily_factor = Factor(name='mom_season_short_daily', data=mom_season_short_daily,
-                                       current_interval='1d')
+# momentum_seasonality monthly/daily
+# mom_season_short_monthly = pl.scan_csv(momentum_dir / 'mom_season_short_monthly.csv',
+#                                        try_parse_dates=True).collect(streaming=True)
+# mom_season_short_monthly_factor = Factor(name='mom_season_short_monthly', data=mom_season_short_monthly,
+#                                          current_interval='1mo', desired_interval='1d')
+# mom_season_short_daily = pl.scan_csv(momentum_dir / 'mom_season_short_daily.csv',
+#                                      try_parse_dates=True).collect(streaming=True)
+# mom_season_short_daily_factor = Factor(name='mom_season_short_daily', data=mom_season_short_daily,
+#                                        current_interval='1d')
 
 print('Creating Model and Adding Factors...')
-model = FactorModel(tickers=tickers, interval='1d')
+model = FactorModel(tickers=tradeable_tickers, interval='1d')
 
-model.add_factor(fff_factor)
-model.add_factor(fundamentals1_factor)
-model.add_factor(div_season_factor)
-model.add_factor(trend_factor)
-model.add_factor(mom_season_short_monthly_factor)
-model.add_factor(mom_season_short_daily_factor)
+# model.add_factor(fff_factor)
+# model.add_factor(fundamentals1_factor)
+# model.add_factor(div_season_factor)
+model.add_factor(ir_pe_factor)
+# model.add_factor(mom_season_short_monthly_factor)
+# model.add_factor(mom_season_short_daily_factor)
+# model.add_factor(asset_growth_factor)
 
 stats = model.wfo(returns_data,
                   train_interval=relativedelta(years=5), anchored=False,  # interval parameters
                   start_date=datetime(2013, 1, 1), end_date=datetime(2019, 1, 1),
-                  k_pct=0.2, long_pct=0.5)  # weight parameters
+                  k_pct=0.2, long_pct=0.5,  # weight parameters,
+                  # reg_alpha=0.5, reg_lambda=0.5,  # regularization parameters
+
+                  )
 
 stats.print_statistics_report()
 stats.get_html()
