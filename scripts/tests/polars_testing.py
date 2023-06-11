@@ -31,7 +31,7 @@ print('Creating Fundamental Features...')
 fundamental_data_dir = get_data_dir() / 'fundamental'
 
 # industry relative p/e
-ir_pe = pl.scan_csv(fundamental_data_dir / 'ir_pe.csv', try_parse_dates=True).collect(streaming=True)
+ir_pe = pl.scan_csv(fundamental_data_dir / 'pe_analysis.csv', try_parse_dates=True).collect(streaming=True)
 ir_pe_factor = Factor(name='ir_pe', data=ir_pe,
                       current_interval='1mo', desired_interval='1d')
 
