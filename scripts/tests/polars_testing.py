@@ -31,9 +31,9 @@ print('Creating Fundamental Features...')
 fundamental_data_dir = get_data_dir() / 'fundamental'
 
 # industry relative p/e
-ir_pe = pl.scan_csv(fundamental_data_dir / 'pe_analysis.csv', try_parse_dates=True).collect(streaming=True)
-ir_pe_factor = Factor(name='ir_pe', data=ir_pe,
-                      current_interval='1mo', desired_interval='1d')
+pe_analysis = pl.scan_csv(fundamental_data_dir / 'pe_analysis.csv', try_parse_dates=True).collect(streaming=True)
+pe_factor = Factor(name='ir_pe', data=pe_analysis,
+                   current_interval='1mo', desired_interval='1d')
 
 # current ratio analysis
 curr_ratio_analysis = pl.scan_csv(fundamental_data_dir / 'curr_ratio_analysis.csv', try_parse_dates=True).collect(
@@ -41,6 +41,11 @@ curr_ratio_analysis = pl.scan_csv(fundamental_data_dir / 'curr_ratio_analysis.cs
 curr_ratio_factor = Factor(name='cr', data=curr_ratio_analysis,
                            current_interval='1mo', desired_interval='1d')
 
+# earnings surprises
+earnings_surprises = pl.scan_csv(fundamental_data_dir / 'earnings_surprises.csv', try_parse_dates=True).collect(
+    streaming=True)
+earnings_surprises_factor = Factor(name='earn_surp', data=earnings_surprises,
+                                   current_interval='1mo', desired_interval='1d')
 # div_season
 # div_season = pl.scan_csv(fundamental_data_dir / 'div_season.csv', try_parse_dates=True) \
 #     .collect(streaming=True)
@@ -86,8 +91,9 @@ model = FactorModel(tickers=tradeable_tickers, interval='1d')
 # model.add_factor(fff_factor)
 # model.add_factor(fundamentals1_factor)
 # model.add_factor(div_season_factor)
-model.add_factor(ir_pe_factor)
+model.add_factor(pe_factor)
 model.add_factor(curr_ratio_factor)
+model.add_factor(earnings_surprises_factor)
 # model.add_factor(rsi_factor)
 # model.add_factor(ranked_momentum_factor)
 # model.add_factor(regression_momentum_factor)
