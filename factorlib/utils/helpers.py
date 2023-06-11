@@ -194,8 +194,8 @@ def clean_data(X: pl.DataFrame, y: pl.DataFrame, col_thresh=0.5):
         .collect(streaming=True)
     )
     inf_dict = {
-        np.inf: 0,
-        -np.inf: 0
+        np.inf: 0.0,
+        -np.inf: 0.0
     }
     X = (
         X.lazy()

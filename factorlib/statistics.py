@@ -148,7 +148,7 @@ class Statistics:
 
     def plot_beeswarm_shaps(self, num_features: int = None, feature: str = None):
         if num_features is None:
-            num_features = len(self.model.factors.columns.get_level_values(1).unique())
+            num_features = len(self.model.factors.columns)
         shap.plots.beeswarm(self.shap_values, num_features)
 
     def save(self, name: str | Path):
