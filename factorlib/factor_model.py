@@ -341,6 +341,16 @@ class FactorModel:
                                                                                             interval='1d',
                                                                                             sign=-1),
                                                                             freq=polars_to_pandas[self.interval]))
+                    indexed_prediction_data = (
+                        self.factors.lazy()
+                        .select(
+                            pl.col('date_index').unique()
+                        )
+                        .filter(
+                            (pl.col('date_index').is_between(pred_start, pred_end, closed="left"))
+                        )
+                        .sort('date_index').collect(streaming=True, no_optimization=True)
+                    )
                     curr_index = (
                         indexed_prediction_data.lazy()
                         .select(
@@ -453,14 +463,14 @@ class FactorModel:
         num_na = int(row.isna().sum())
         indices = np.argsort(row)[:-num_na]  # sorted in ascending order
         if num_na == 0:
-            indices = np.argsort(row)  # sorted in ascending order
+            indices = np.argsort(row)
 
         k = int(np.floor(len(indices) * k_pct))
         if k == 0:  # if there are only 3 tickers to choose from, k floors to 0.
             k = 1
 
-        bottomk = indices[:k]
         topk = indices[-k:]
+        bottomk = indices[:k]
         positions = [0] * len(row)
 
         if long_only:

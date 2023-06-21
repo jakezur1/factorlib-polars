@@ -9,6 +9,9 @@ from factorlib.factor_model import FactorModel
 from factorlib.utils.system import get_data_dir, get_results_dir
 from factorlib.transforms.expr_shortcuts import calculate_returns
 
+MODEL_INTERVAL = '1d'
+
+
 raw_data_dir = get_data_dir() / "raw"
 
 print('Reading in Stock Data...')
@@ -16,6 +19,17 @@ tradeable_tickers = pd.read_csv(raw_data_dir / 'tickers_to_trade.csv')['ticker']
 print("Universe of Tickers: ", len(tradeable_tickers), " Total")
 
 returns_data = pl.read_csv(raw_data_dir / 'training_returns.csv', try_parse_dates=True)
+
+print('Creating Price Features...')
+price_data_dir = get_data_dir() / 'price'
+# technicals
+technicals = (
+    pl.scan_csv(price_data_dir / 'technicals.csv', try_parse_dates=True)
+    .collect(streaming=True)
+)
+
+technicals_factor = Factor(name='techs', data=technicals, current_interval='1d')
+
 
 print('Creating General Features...')
 # fff
@@ -29,36 +43,50 @@ general_data_dir = get_data_dir() / 'general'
 
 print('Creating Fundamental Features...')
 fundamental_data_dir = get_data_dir() / 'fundamental'
-
-# industry relative p/e
-pe_analysis = pl.scan_csv(fundamental_data_dir / 'pe_analysis.csv', try_parse_dates=True).collect(streaming=True)
-pe_factor = Factor(name='ir_pe', data=pe_analysis,
-                   current_interval='1mo', desired_interval='1d')
-
+#
+# p/e analysis
+# pe_analysis = pl.scan_csv(fundamental_data_dir / 'pe_analysis.csv', try_parse_dates=True).collect(streaming=True)
+# pe_factor = Factor(name='pe', data=pe_analysis,
+#                    current_interval='1mo', desired_interval=MODEL_INTERVAL)
+#
+# s/p analysis
+# sp_analysis = pl.scan_csv(fundamental_data_dir / 'sp_analysis.csv', try_parse_dates=True).collect(streaming=True)
+# sp_factor = Factor(name='sp', data=sp_analysis,
+#                    current_interval='1mo', desired_interval=MODEL_INTERVAL)
+#
+#
 # current ratio analysis
-curr_ratio_analysis = pl.scan_csv(fundamental_data_dir / 'curr_ratio_analysis.csv', try_parse_dates=True).collect(
-    streaming=True)
-curr_ratio_factor = Factor(name='cr', data=curr_ratio_analysis,
-                           current_interval='1mo', desired_interval='1d')
-
+# curr_ratio_analysis = pl.scan_csv(fundamental_data_dir / 'curr_ratio_analysis.csv', try_parse_dates=True).collect(
+#     streaming=True)
+# curr_ratio_factor = Factor(name='cr', data=curr_ratio_analysis,
+#                            current_interval='1mo', desired_interval=MODEL_INTERVAL)
+#
 # earnings surprises
-earnings_surprises = pl.scan_csv(fundamental_data_dir / 'earnings_surprises.csv', try_parse_dates=True).collect(
-    streaming=True)
-earnings_surprises_factor = Factor(name='earn_surp', data=earnings_surprises,
-                                   current_interval='1mo', desired_interval='1d')
+# earnings_surprises = pl.scan_csv(fundamental_data_dir / 'earnings_surprises.csv', try_parse_dates=True).collect(
+#     streaming=True)
+# earnings_surprises_factor = Factor(name='earn_surp', data=earnings_surprises,
+#                                    current_interval='1mo', desired_interval=MODEL_INTERVAL)
 # div_season
 # div_season = pl.scan_csv(fundamental_data_dir / 'div_season.csv', try_parse_dates=True) \
 #     .collect(streaming=True)
 # div_season_factor = Factor(name='div_season', data=div_season, current_interval='1mo', desired_interval='1d')
 
 # ch_tax
-# ch_tax = pl.scan_csv(fundamental _data_dir / 'ch_tax.csv', try_parse_dates=True) \
-#     .collect(streaming=True)
+# ch_tax = pl.scan_csv(fundamental_data_dir / 'ch_tax.csv', try_parse_dates=True).collect(streaming=True)
 # ch_tax_factor = Factor(name='ch_tax', data=ch_tax, current_interval='1mo', desired_interval='1d')
 #
 # asset_growth = pl.scan_csv(fundamental_data_dir / 'asset_growth.csv', try_parse_dates=True) \
 #     .collect(streaming=True)
 # asset_growth_factor = Factor(name='asset_growth', data=asset_growth, current_interval='1mo', desired_interval='1d')
+
+print('Creating Statistical Features...')
+statistical_dir = get_data_dir() / 'statistical'
+
+# egarch variance
+# egarch_variance = pl.scan_csv(statistical_dir / 'egarch_variance.csv', try_parse_dates=True).collect(
+#     streaming=True)
+# egarch_variance_factor = Factor(name='egarch', data=egarch_variance,
+#                                 current_interval='1d', desired_interval=MODEL_INTERVAL)
 
 print('Creating Momentum Features...')
 momentum_dir = get_data_dir() / 'momentum'
@@ -86,14 +114,18 @@ momentum_dir = get_data_dir() / 'momentum'
 #                                        current_interval='1d')
 
 print('Creating Model and Adding Factors...')
-model = FactorModel(tickers=tradeable_tickers, interval='1d')
+model = FactorModel(tickers=tradeable_tickers, interval=MODEL_INTERVAL)
 
+model.add_factor(technicals_factor)
 # model.add_factor(fff_factor)
 # model.add_factor(fundamentals1_factor)
 # model.add_factor(div_season_factor)
-model.add_factor(pe_factor)
-model.add_factor(curr_ratio_factor)
-model.add_factor(earnings_surprises_factor)
+# model.add_factor(pe_factor)
+# model.add_factor(sp_factor)
+# model.add_factor(curr_ratio_factor)
+# model.add_factor(earnings_surprises_factor)
+# model.add_factor(egarch_variance_factor)
+# model.add_factor(ch_tax_factor)
 # model.add_factor(rsi_factor)
 # model.add_factor(ranked_momentum_factor)
 # model.add_factor(regression_momentum_factor)
