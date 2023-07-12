@@ -1,6 +1,7 @@
 import json
 import polars as pl
 import pandas as pd
+import pickle as pkl
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 
@@ -11,17 +12,24 @@ from factorlib.transforms.expr_shortcuts import calculate_returns
 
 MODEL_INTERVAL = '1d'
 
-
 raw_data_dir = get_data_dir() / "raw"
 
 print('Reading in Stock Data...')
-tradeable_tickers = pd.read_csv(raw_data_dir / 'tickers_to_trade.csv')['ticker'].tolist()
+# tradeable_tickers = pd.read_csv(raw_data_dir / 'tickers_to_trade.csv')['ticker'].tolist()
+tradeable_tickers = ["OPRA", "SMCI", "LMB", "MLTX", "YPF", "CABA", "WEAV", "ELF", "EDN", "ACLS", "INTT", "ETNB", "CIR",
+                     "RCL", "NVDA", "DAKT", "TCMD", "DMAC", "IMVT", "MMMB", "ENIC", "WFRD", "IPDN", "STRL", "RMBS",
+                     "MOD", "NGL", "TDW", "TAYD", "VIST", "EXTR", "SYM", "CCL", "CMT", "CBAY", "TGLS", "BELFB", "VECT",
+                     "AEHR", "CUK", "UFPT", "AUGX", "ISEE", "TAST", "COCO", "VRT", "BWMN", "ONCY", "BLDR", "ODC",
+                     "ATEC", "NVTS", "RMTI", "AVDL", "IRS", "DFH", "CVRX", "PEN", "TGS", "GRBK", "PLPC", "SKYW", "USAP",
+                     "ACVA", "RETA", "BTBT", "TROO", "POWL", "PPSI", "FTI", "DO", "SGML", "GGAL", "PCYG", "NETI",
+                     "TRHC", "ARDX", "STVN", "NFLX", "INTA", "MORF", "RXST", "HGBL", "GE", "BZH", "BBAR", "PESI", "RIG",
+                     "NU", "TK", "JBL", "ERO", "SMHI", "IRON", "EVLV", "GENI", "ELTK", "ENVX", "META", "NCLH"]
 print("Universe of Tickers: ", len(tradeable_tickers), " Total")
 
-returns_data = pl.read_csv(raw_data_dir / 'training_returns.csv', try_parse_dates=True)
-
+returns_data = pl.scan_csv(raw_data_dir / 'small_universe_returns.csv', try_parse_dates=True).collect(streaming=True)
 print('Creating Price Features...')
 price_data_dir = get_data_dir() / 'price'
+
 # technicals
 technicals = (
     pl.scan_csv(price_data_dir / 'technicals.csv', try_parse_dates=True)
@@ -30,6 +38,13 @@ technicals = (
 
 technicals_factor = Factor(name='techs', data=technicals, current_interval='1d')
 
+# candle sticks
+candle_sticks = (
+    pl.scan_csv(price_data_dir / 'candle_sticks.csv', try_parse_dates=True)
+    .collect(streaming=True)
+)
+
+candle_sticks_factor = Factor(name='c_sticks', data=candle_sticks, current_interval='1d')
 
 print('Creating General Features...')
 # fff
@@ -117,6 +132,7 @@ print('Creating Model and Adding Factors...')
 model = FactorModel(tickers=tradeable_tickers, interval=MODEL_INTERVAL)
 
 model.add_factor(technicals_factor)
+model.add_factor(candle_sticks_factor)
 # model.add_factor(fff_factor)
 # model.add_factor(fundamentals1_factor)
 # model.add_factor(div_season_factor)
@@ -133,11 +149,14 @@ model.add_factor(technicals_factor)
 # model.add_factor(mom_season_short_daily_factor)
 # model.add_factor(asset_growth_factor)
 
+with open(raw_data_dir / 'sp500_candidates.pkl', 'rb') as p:
+    candidates = pkl.load(p)
 stats = model.wfo(returns_data,
                   train_interval=relativedelta(years=5), anchored=False,  # interval parameters
-                  start_date=datetime(2013, 1, 1), end_date=datetime(2019, 1, 1),
+                  start_date=datetime(2017, 1, 1), end_date=datetime(2023, 1, 1),
+                  # candidates=candidates,  # list of candidates to consider each year
                   k_pct=0.2, long_pct=0.5,  # weight parameters,
-                  # reg_alpha=0.5, reg_lambda=0.5,  # regularization parameters
+                  reg_alpha=0.5, reg_lambda=0.5,  # regularization parameters
                   )
 
 stats.print_statistics_report()

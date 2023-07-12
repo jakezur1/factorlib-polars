@@ -57,8 +57,11 @@ class Factor:
 
         self.name = name
         self.interval = current_interval
-        data = data.sort(by='date_index').set_sorted('date_index')
+        data = data.lazy().sort(by='date_index').set_sorted('date_index').collect(streaming=True)
         try:
+            data = data.with_columns(
+                pl.all().exclude(['date_index', 'ticker']).cast(pl.Float64)
+            )
             data = data.with_columns(
                 pl.col('date_index').cast(pl.Datetime)
             )
@@ -73,7 +76,6 @@ class Factor:
                                  melted=(not general_factor))
             self.interval = desired_interval
         else:
-            data.replace('date_index', data.select(pl.col('date_index').cast(pl.Datetime)).to_series())
             self.data = data
 
         self.transforms = transforms

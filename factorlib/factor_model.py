@@ -12,12 +12,14 @@ from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
 from sklearn.ensemble import *
 from xgboost import XGBRegressor
+import warnings
 
 import factorlib
 from .factor import Factor
 from .utils.helpers import resample, shift_by_time_step, align_by_date_index, offset_datetime, clean_data, \
     get_start_convention
 from .utils.system import silence_warnings
+from .utils.warnings import ParameterOverride
 from .utils.datetime_maps import pl_time_intervals, polars_to_pandas
 
 silence_warnings()
@@ -90,7 +92,7 @@ class FactorModel:
                 rename_map = dict(zip(cols_to_keep, cols_to_exclude))
                 self.factors.rename(rename_map)
 
-            self.factors = self.factors.sort(['date_index', 'ticker'])
+            self.factors = self.factors.lazy().sort(['ticker', 'date_index']).collect(streaming=True)
 
             if self.earliest_start is None:
                 self.earliest_start = curr_factor.start
@@ -154,6 +156,15 @@ class FactorModel:
         assert (self.interval == '1d' or self.interval == '1w' or self.interval == '1mo' or self.interval == '1y'), \
             'Walk forward optimization currently only supports daily, weekly, monthly, or yearly intervals'
 
+        if self.tickers is not None and candidates is not None:
+            warnings.warn(f'You have passed a `tickers` list with {len(self.tickers)} tickers to this model, but also '
+                          f'passed a dictionary of candidates to consider as well. Candidates take precedent over '
+                          f'tickers, so tickers will not be used. Moving on...', category=ParameterOverride)
+        all_candidates = set([])
+        if candidates is not None:
+            for key, value in candidates.items():
+                all_candidates = all_candidates | set(value)
+
         if train_freq is not None:
             print('the train_freq parameter does not have stable implementation yet. '
                   'Defaulting to monthly (`M`) training.')
@@ -183,7 +194,6 @@ class FactorModel:
             string_cols = ['date_index', 'ticker']
 
         returns.replace('date_index', returns.select(pl.col('date_index').cast(pl.Datetime)).to_series())
-        returns = returns.fill_null(0)
         returns = returns.select(pl.col(string_cols), pl.all().exclude(string_cols).cast(pl.Float64))
         # shift returns back by 'time' time steps
         shifted_returns = shift_by_time_step(pred_time, returns)
@@ -209,7 +219,7 @@ class FactorModel:
             melted_returns = returns
 
         # sort factors on date_index and ticker
-        self.factors = self.factors.lazy().sort(by=['date_index', 'ticker']).collect(streaming=True)
+        self.factors = self.factors.sort(by=['date_index', 'ticker'])
         # set the frequency of training
         frequency = None
         if train_freq is None:
@@ -231,7 +241,7 @@ class FactorModel:
 
         # initialize statistics data
         expected_returns = pd.DataFrame()
-        expected_returns_index = []
+        expected_returns_index = set([])
         training_spearman = pd.Series(dtype=object)
 
         # using for loop for tqdm progress bar
@@ -266,12 +276,6 @@ class FactorModel:
             y_train_unindexed = y_train.drop(['date_index', 'ticker'])
             self.model.fit(X_train_unindexed, y_train_unindexed)
 
-            if index == (len(loop_range) - 1):
-                explainer = shap.Explainer(self.model)
-                shap_values = explainer(X_train_unindexed)
-
-            # print('Took', time.time() - start, 'seconds to fit model')
-
             if index != 0:
                 training_predictions = self.predict(X_train_unindexed)
                 spear_index = X_train.select(
@@ -303,66 +307,45 @@ class FactorModel:
             pred_start = get_start_convention(pred_start, interval=self.interval)
             pred_end = offset_datetime(training_end, interval=frequency)
 
+            curr_index = (
+                self.factors.lazy()
+                .filter(pl.col('date_index').is_between(pred_start, pred_end, closed="left"))
+                .select(
+                    pl.col('date_index').unique()
+                ).sort('date_index').collect(streaming=True, no_optimization=True)
+            ).to_series().to_list()
             curr_predictions = pd.DataFrame()
-
-            for ticker in self.tickers:
-                if len(self.factors.lazy()
-                        .filter(
-                            ((pl.col('date_index').is_between(pred_start, pred_end, closed="left")) &
-                             (pl.col('ticker') == str(ticker)))
-                        ).collect(streaming=True)) != 0:
+            if candidates is None:
+                tickers_to_consider = self.tickers
+            else:
+                tickers_to_consider = candidates[datetime(pred_start.year, pred_start.month, 1)]
+            for ticker in tickers_to_consider:
+                if len(self.factors.lazy().filter(
+                    ((pl.col('date_index').is_between(pred_start, pred_end, closed="left")) &
+                     (pl.col('ticker') == str(ticker)))
+                ).collect(streaming=True)) == len(curr_index):
                     indexed_prediction_data = (
                         self.factors.lazy()
                         .filter(
                             ((pl.col('date_index').is_between(pred_start, pred_end, closed="left")) &
                              (pl.col('ticker') == str(ticker)))
                         )
-                        .sort('date_index').collect(streaming=True, no_optimization=True)
+                        .sort('date_index').collect(streaming=True)
                     )
                     prediction_data = indexed_prediction_data.drop(['date_index', 'ticker'])
 
-                    # debugging point to find broken tickers
-                    if ticker == 'DE':
-                        pass
+                    predictions = self.model.predict(prediction_data).flatten()
 
-                    curr_predictions[ticker] = self.model.predict(prediction_data).flatten()
-                    curr_index = (
-                        indexed_prediction_data.lazy()
-                        .select(
-                            pl.col('date_index').unique()
-                        )
-                        .collect(streaming=True)
-                        .to_series()
-                        .to_list()
-                    )
+                    curr_predictions[ticker] = predictions
+
                 else:
-                    curr_predictions[ticker] = [np.nan] * len(pd.date_range(pred_start,
-                                                                            offset_datetime(pred_end,
-                                                                                            interval='1d',
-                                                                                            sign=-1),
-                                                                            freq=polars_to_pandas[self.interval]))
-                    indexed_prediction_data = (
-                        self.factors.lazy()
-                        .select(
-                            pl.col('date_index').unique()
-                        )
-                        .filter(
-                            (pl.col('date_index').is_between(pred_start, pred_end, closed="left"))
-                        )
-                        .sort('date_index').collect(streaming=True, no_optimization=True)
-                    )
-                    curr_index = (
-                        indexed_prediction_data.lazy()
-                        .select(
-                            pl.col('date_index').unique()
-                        )
-                        .collect(streaming=True)
-                        .to_series()
-                        .to_list()
-                    )
+                    curr_predictions[ticker] = [np.nan] * len(curr_index)
 
+            curr_predictions.index = curr_index
+            if candidates is not None:
+                curr_predictions = curr_predictions.reindex(columns=list(all_candidates))
             expected_returns = pd.concat([expected_returns, curr_predictions])
-            expected_returns_index.extend(curr_index)
+            expected_returns_index = expected_returns_index | set(curr_index)
 
             # calculate new intervals to train
             if not anchored:
@@ -372,30 +355,22 @@ class FactorModel:
             training_end = offset_datetime(training_end, interval=frequency)
             training_end = get_start_convention(training_end, self.interval)
 
-        expected_returns_index = np.array(expected_returns_index, dtype='datetime64[D]')
-        expected_returns_index = np.unique(expected_returns_index)
-        expected_returns.index = expected_returns_index
+        # problem. with business days, the index of the expected returns is a different length than the actually returns.
+        # this means we are predicting on non-business days or something. look into in further detail later.
         expected_returns = expected_returns.resample(polars_to_pandas[self.interval],
-                                                     convention='start').asfreq().fillna(0)
+                                                     convention='start').first()
 
         print('Expected returns: ')
         print(f'{expected_returns}\n')
-
         # get positions
-        positions = expected_returns.apply(self._get_positions, axis=1,
-                                           k_pct=k_pct, long_pct=long_pct,
-                                           long_only=long_only, short_only=short_only)
+        positions = expected_returns.apply(self._get_positions, axis=1, tickers_to_consider=expected_returns.columns,
+                                           k_pct=k_pct, long_pct=long_pct, long_only=long_only, short_only=short_only)
 
         positions = positions.resample(polars_to_pandas[self.interval], convention='start').asfreq().fillna(0)
         positions = positions.shift(-1).dropna()
-        positions = pl.from_pandas(positions)
-        positions = (
-            positions.lazy()
-            .with_columns(
-                pl.Series('date_index', expected_returns_index.tolist()[:-1]).cast(pl.Datetime)
-            )
-            .collect(streaming=True)
-        )
+        positions = pl.from_pandas(positions.reset_index().rename(columns={'index': 'date_index'}))
+        positions = positions.with_columns(pl.col('date_index').cast(pl.Datetime))
+        returns = returns.with_columns(pl.col('date_index').cast(pl.Datetime))
 
         # align positions and returns
         positions, returns = pl.align_frames(positions, returns, on='date_index', how='left')
@@ -416,14 +391,16 @@ class FactorModel:
         portfolio_returns = portfolio_returns.to_pandas()
         portfolio_returns = portfolio_returns.set_index('date_index')
         returns = returns.to_pandas()
+        returns.fillna(0, inplace=True)
         returns = returns.set_index('date_index')
+        expected_returns.fillna(0, inplace=True)
         positions = positions.with_columns(returns_index)
         positions = positions.to_pandas().set_index('date_index')
 
         # importing here to avoid circular import
         from .statistics import Statistics
         return Statistics(portfolio_returns, self, predicted_returns=expected_returns, stock_returns=returns,
-                          position_weights=positions, training_spearman=training_spearman, shap_values=shap_values)
+                          position_weights=positions, training_spearman=training_spearman)
 
     def save(self, path: str | Path) -> None:
         """
@@ -441,6 +418,7 @@ class FactorModel:
         self.__dict__.update(loaded_model.__dict__)
 
     def _get_positions(self, row: pd.Series,
+                       tickers_to_consider: list,
                        k_pct: float = 0.2,
                        long_pct: float = 0.5,
                        long_only: bool = False,
@@ -483,7 +461,7 @@ class FactorModel:
         for i in bottomk:
             positions[i] = round((-1 / k) * (1 - long_pct), 6)
 
-        return pd.Series(positions, index=self.tickers)
+        return pd.Series(positions, index=tickers_to_consider)
 
     def _get_model(self, model, **kwargs):
         if model == 'hgbm':

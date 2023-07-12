@@ -32,6 +32,8 @@ def resample(data: pl.DataFrame, current_interval: str, desired_interval: str, m
                 .agg(pl.all().exclude('date_index').first())
                 .collect(streaming=True)
             )
+            if desired_interval == '1d':
+                data = _account_for_bdays(data)
         else:
             data = (
                 data.lazy()
@@ -41,14 +43,18 @@ def resample(data: pl.DataFrame, current_interval: str, desired_interval: str, m
                 .agg(pl.all().exclude('date_index').first())
                 .collect(streaming=True)
             )
+            if desired_interval == '1d':
+                data = _account_for_bdays(data)
     elif resampling_technique == 'upsample':
         if melted:
             data = (
                 data.sort('date_index')
                 .set_sorted('date_index')
-                .upsample(time_column='date_index', every=desired_interval, by='ticker')
+                .upsample(time_column='date_index', every=desired_interval, by='ticker', maintain_order=True)
                 .select(pl.all().forward_fill())
             )
+            if desired_interval == '1d':
+                data = _account_for_bdays(data)
         else:
             data = (
                 data.sort('date_index')
@@ -56,6 +62,8 @@ def resample(data: pl.DataFrame, current_interval: str, desired_interval: str, m
                 .upsample(time_column='date_index', every=desired_interval)
                 .select(pl.all().forward_fill())
             )
+            if desired_interval == '1d':
+                data = _account_for_bdays(data)
     data.replace('date_index', data.select(pl.col('date_index').cast(pl.Datetime)).to_series())
     return data
 
@@ -174,7 +182,7 @@ def clean_data(X: pl.DataFrame, y: pl.DataFrame, col_thresh=0.5):
 
     X = (
         X.lazy()
-        .join(y.lazy(), on=['date_index', 'ticker'], how='outer')
+        .join(y.lazy(), on=['date_index', 'ticker'], how='inner')
         .collect(streaming=True)
     )
     X = X.drop_nulls(subset=['returns'])  # only look for NaNs in returns, otherwise keep NaNs
@@ -249,4 +257,14 @@ def _up_or_down_sample(data: pl.DataFrame, input_interval, output_interval: str)
     elif pl_time_intervals[input_interval] > pl_time_intervals[output_interval]:
         return 'upsample'
     else:
-        return 'upsample'
+        return 'Don\'t waste your time'
+
+
+def _account_for_bdays(data: pl.DataFrame):
+    start_date = data.select(pl.col('date_index').min()).item()
+    end_date = data.select(pl.col('date_index').max()).item()
+    business_days = pd.bdate_range(start=start_date, end=end_date)
+    business_days = business_days.tolist()
+    business_days = pd.to_datetime(business_days)
+    data = data.filter(pl.col('date_index').is_in(business_days))
+    return data

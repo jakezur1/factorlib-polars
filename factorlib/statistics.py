@@ -8,7 +8,6 @@ import random
 from prettytable import PrettyTable
 import matplotlib.pyplot as plt
 import pickle
-import shap
 from pathlib import Path
 
 from factorlib.transforms.transforms import _compsum
@@ -18,14 +17,12 @@ from factorlib.utils.datetime_maps import time_delta_intervals, polars_to_pandas
 from factorlib.factor_model import FactorModel
 
 
-
 class Statistics:
     def __init__(self, portfolio_returns: pd.DataFrame = None,
                  model: FactorModel = None,
                  predicted_returns: pd.DataFrame = None,
                  position_weights: pd.DataFrame = None,
                  training_spearman: pd.Series = None,
-                 shap_values: np.array = None,
                  stock_returns: pd.DataFrame = None,
                  extra_baselines: [pd.Series] = None):
 
@@ -40,9 +37,9 @@ class Statistics:
             self.portfolio_returns = portfolio_returns
             self.position_weights = position_weights
             self.training_spearman = training_spearman
-            self.shap_values = shap_values
             self.testing_spearman = predicted_returns.corrwith(stock_returns, method='spearman', axis=1,
                                                                numeric_only=True).expanding(1).mean()[10:]
+            self.feature_importances = self.model.model.feature_importances_
 
             self.portfolio_returns.index = pd.to_datetime(self.portfolio_returns.index).tz_localize(None) \
                 .floor('D')
@@ -50,7 +47,7 @@ class Statistics:
             correct_index = self.portfolio_returns[1:].index
 
             bh_returns = stock_returns.loc[list(set(correct_index) & set(stock_returns.index))]
-            self.buy_hold_baseline = bh_returns / len(self.model.tickers)
+            self.buy_hold_baseline = bh_returns / len(bh_returns.columns)
             self.buy_hold_baseline = self.buy_hold_baseline.sum(axis=1)
             self.buy_hold_baseline = pd.DataFrame(data={
                 'buy_hold': self.buy_hold_baseline
@@ -74,9 +71,10 @@ class Statistics:
 
             stock_returns = stock_returns.loc[self.portfolio_returns.index[0]:self.portfolio_returns.index[-1]]
 
-            positions = stock_returns[self.model.tickers]
+            positions = stock_returns[predicted_returns.columns]
             positions = positions.apply(self._get_random_positions, axis=1,
-                                        args=[min(20, len(self.model.tickers) // 2)]).shift(-1)
+                                        args=[min(20, len(positions.columns) // 2)],
+                                        tickers_to_consider=positions.columns).shift(-1)
             self.random_baseline = stock_returns
             self.random_baseline = self.random_baseline.mul(positions)
             self.random_baseline = self.random_baseline.sum(axis=1)
@@ -146,11 +144,6 @@ class Statistics:
         mi_avg = mi_total / len(self.stock_returns.columns)
         return mi_avg
 
-    def plot_beeswarm_shaps(self, num_features: int = None, feature: str = None):
-        if num_features is None:
-            num_features = len(self.model.factors.columns)
-        shap.plots.beeswarm(self.shap_values, num_features)
-
     def save(self, name: str | Path):
         with open(name, 'wb') as f:
             pickle.dump(self, f)
@@ -181,7 +174,7 @@ class Statistics:
         win_rate = ['win rate']
         print('Spearman correlation: ' + str(self.compute_spearman_rank()))
         print('Hit Ratio: ' + str(self.compute_hit_ratio()))
-        print('Mutual Information: ' + str(self.compute_mutual_info()))
+        # print('Mutual Information: ' + str(self.compute_mutual_info()))
 
         # se lf.compute_correlations()
         for returns in self.all_returns:
@@ -206,7 +199,7 @@ class Statistics:
         print(statsTable)
         print()
 
-        fig, axs = plt.subplots(2, 1, figsize=(15, 20))
+        fig, axs = plt.subplots(3, 1, figsize=(20, 30))
         fontsize = 18
         line_width = 3
 
@@ -217,16 +210,6 @@ class Statistics:
         axs[0].set_title('Position Weights', size=fontsize)
         axs[0].tick_params(axis='both', which='major', labelsize=15)
 
-        # plot RMSE (tests and training)
-        # RMSE is unfortunately useless for this data
-        # axs[1].plot(self.training_mse.index, np.sqrt(self.training_mse.values * 100), label='Training MSE',
-        #             linewidth=line_width)
-        # axs[1].plot(self.testing_mse.index, np.sqrt(self.testing_mse.values * 100), label='Testing MSE',
-        #             linewidth=line_width)
-        # axs[1].set_title('RMSE', size=fontsize)
-        # axs[1].legend(loc='upper left', prop={'size': fontsize})
-        # axs[1].tick_params(axis='both', which='major', labelsize=15)
-
         # plot rolling spearman ranks (tests and training)
         axs[1].plot(self.training_spearman.index, self.training_spearman.values, label='Training Spearman',
                     linewidth=line_width)
@@ -236,11 +219,22 @@ class Statistics:
         axs[1].legend(loc='upper left', prop={'size': fontsize})
         axs[1].tick_params(axis='both', which='major', labelsize=15)
 
+        # plot feature importance
+        factor_names = [factor_name for factor_name in self.model.factors.columns if factor_name not in ['date_index', 'ticker']]
+        factor_index = np.arange(len(factor_names))
+        factor_dict = dict(zip(factor_index, factor_names))
+        print("Index-Factor Key:")
+        print(factor_dict)
+        axs[2].bar(factor_index, self.feature_importances, label='Feature Importance', linewidth=line_width)
+        axs[2].set_title('Feature Importance', size=fontsize)
+        axs[2].legend(loc='upper left', prop={'size': fontsize})
+        axs[2].tick_params(axis='both', which='major', labelsize=15)
+
         fig.tight_layout(pad=5.0)
 
         qs.plots.snapshot(self.portfolio_returns['factors'])
 
-    def _get_random_positions(self, row, k):
+    def _get_random_positions(self, row, k, tickers_to_consider):
         indices = np.argsort(row)  # ascending order
         random.shuffle(indices)
 
@@ -256,4 +250,4 @@ class Statistics:
         for index, i in enumerate(bottom_k):
             positions[i] = round((-1 / k) * (1 - long_weights[index]), 2)
 
-        return pd.Series(positions, index=self.model.tickers)
+        return pd.Series(positions, index=tickers_to_consider)
