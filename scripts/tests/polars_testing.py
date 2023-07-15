@@ -58,6 +58,16 @@ general_data_dir = get_data_dir() / 'general'
 
 print('Creating Fundamental Features...')
 fundamental_data_dir = get_data_dir() / 'fundamental'
+
+categorical_fundamentals = pl.scan_csv(fundamental_data_dir / 'subindustry_fundamentals.csv',
+                                       try_parse_dates=True).collect(streaming=True)
+cat_fundamentals_factor = Factor(name='cat_fund', data=categorical_fundamentals,
+                                 current_interval=MODEL_INTERVAL)
+
+non_cat_fundamentals = pl.scan_csv(fundamental_data_dir / 'non_cat_fundamentals.csv', try_parse_dates=True).collect(
+    streaming=True)
+non_cat_funds_factor = Factor(name='non_cat_fund', data=non_cat_fundamentals,
+                              current_interval=MODEL_INTERVAL)
 #
 # p/e analysis
 # pe_analysis = pl.scan_csv(fundamental_data_dir / 'pe_analysis.csv', try_parse_dates=True).collect(streaming=True)
@@ -133,6 +143,8 @@ model = FactorModel(tickers=tradeable_tickers, interval=MODEL_INTERVAL)
 
 model.add_factor(technicals_factor)
 model.add_factor(candle_sticks_factor)
+model.add_factor(cat_fundamentals_factor)
+model.add_factor(non_cat_funds_factor)
 # model.add_factor(fff_factor)
 # model.add_factor(fundamentals1_factor)
 # model.add_factor(div_season_factor)
