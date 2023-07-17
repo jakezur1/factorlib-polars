@@ -3,6 +3,7 @@ from tqdm.auto import tqdm
 import numpy as np
 import pandas as pd
 import polars as pl
+from polars import selectors as cs
 import pickle
 import time
 import shap
@@ -16,8 +17,8 @@ import warnings
 
 import factorlib
 from .factor import Factor
-from .utils.helpers import resample, shift_by_time_step, align_by_date_index, offset_datetime, clean_data, \
-    get_start_convention
+from .utils.helpers import resample, shift_by_time_step, offset_datetime, clean_data, \
+    get_start_convention, align_by_date_index
 from .utils.system import silence_warnings
 from .utils.warnings import ParameterOverride
 from .utils.datetime_maps import pl_time_intervals, polars_to_pandas
@@ -66,8 +67,8 @@ class FactorModel:
             factor = [factor]
 
         for curr_factor in factor:
-            curr_factor.data = resample(data=curr_factor.data, current_interval=curr_factor.interval,
-                                        desired_interval=self.interval)
+            # curr_factor.data = resample(data=curr_factor.data, current_interval=curr_factor.interval,
+            #                             desired_interval=self.interval)
 
             if self.factors.is_empty():
                 self.factors = curr_factor.data
@@ -91,8 +92,6 @@ class FactorModel:
                 )
                 rename_map = dict(zip(cols_to_keep, cols_to_exclude))
                 self.factors.rename(rename_map)
-
-            self.factors = self.factors.lazy().sort(['ticker', 'date_index']).collect(streaming=True)
 
             if self.earliest_start is None:
                 self.earliest_start = curr_factor.start
@@ -219,7 +218,8 @@ class FactorModel:
             melted_returns = returns
 
         # sort factors on date_index and ticker
-        self.factors = self.factors.sort(by=['date_index', 'ticker'])
+        self.factors = self.factors.lazy().sort(['ticker', 'date_index']).collect(streaming=True)
+
         # set the frequency of training
         frequency = None
         if train_freq is None:
@@ -234,7 +234,7 @@ class FactorModel:
         training_end = start_date + train_interval
         assert training_end < end_date, 'Training interval exceeds the total amount of data provided. Choose a ' \
                                         'shorter `train_interval` or an earlier start date.'
-        self.model = XGBRegressor(n_jobs=-1, tree_method='hist', random_state=42, **kwargs)
+        self.model = XGBRegressor(n_jobs=-1, tree_method='hist', enable_categorical=True, random_state=42, **kwargs)
 
         # perform walk forest optimization on factors data and record expected returns
         # at each time step
@@ -333,6 +333,21 @@ class FactorModel:
                         .sort('date_index').collect(streaming=True)
                     )
                     prediction_data = indexed_prediction_data.drop(['date_index', 'ticker'])
+
+                    # find categorical columns
+                    string_and_categorical = prediction_data.select(cs.string(include_categorical=True)).columns
+                    string_only = prediction_data.select(cs.string(include_categorical=False)).columns
+                    categorical_columns = [column for column in string_and_categorical if column not in string_only]
+                    inf_dict = {np.inf: 0,
+                                -np.inf: 0}
+                    prediction_data = (
+                        prediction_data.lazy()
+                        .select(
+                            pl.col(categorical_columns),
+                            pl.all().exclude(categorical_columns).map_dict(inf_dict, default=pl.first())
+                        )
+                        .collect(streaming=True)
+                    )
 
                     predictions = self.model.predict(prediction_data).flatten()
 

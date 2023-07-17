@@ -3,6 +3,7 @@ import pandas as pd
 import polars as pl
 from datetime import datetime
 from factorlib.utils.datetime_maps import polars_to_pandas, pl_time_intervals
+import polars.selectors as cs
 
 
 def resample(data: pl.DataFrame, current_interval: str, desired_interval: str, melted=True):
@@ -139,7 +140,8 @@ def align_by_date_index(df1: pl.DataFrame, df2: pl.DataFrame):
 
     :return: The aligned dataframes.
     """
-
+    df1 = df1.sort('date_index')
+    df2 = df2.sort('date_index')
     df1_dates = df1.select(pl.col('date_index'))
     df2_dates = df2.select(pl.col('date_index'))
     if df1_dates.item(0, 0) > df2_dates.item(0, 0):
@@ -181,9 +183,7 @@ def clean_data(X: pl.DataFrame, y: pl.DataFrame, col_thresh=0.5):
     """
 
     X = (
-        X.lazy()
-        .join(y.lazy(), on=['date_index', 'ticker'], how='inner')
-        .collect(streaming=True)
+        X.join(y, on=['date_index', 'ticker'], how='inner')
     )
     X = X.drop_nulls(subset=['returns'])  # only look for NaNs in returns, otherwise keep NaNs
     y = (
@@ -205,12 +205,17 @@ def clean_data(X: pl.DataFrame, y: pl.DataFrame, col_thresh=0.5):
         np.inf: 0.0,
         -np.inf: 0.0
     }
+    string_and_categorical = X.select(cs.string(include_categorical=True)).columns
+    string_only = X.select(cs.string(include_categorical=False)).columns
+    categorical_columns = [column for column in string_and_categorical if column not in string_only]
+    exclude_columns = categorical_columns + ['date_index', 'ticker']
     X = (
         X.lazy()
         .select(
             pl.col('date_index'),
             pl.col('ticker'),
-            pl.all().exclude(['date_index', 'ticker']).map_dict(inf_dict, default=pl.first())
+            pl.col(categorical_columns),
+            pl.all().exclude(exclude_columns).map_dict(inf_dict, default=pl.first())
         )
         .collect(streaming=True)
     )

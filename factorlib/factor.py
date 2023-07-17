@@ -16,7 +16,7 @@ class Factor:
     def __init__(self, name: str = None, data: pl.DataFrame = None,
                  current_interval: str = '1d', general_factor: bool = False,
                  desired_interval: str = None, tickers: [str] = None,
-                 transforms=None):
+                 categorical: [str] = None, transforms=None):
         """
         :param name: The name of the factor. If multiple factors are included in this object, name it by a
                      general category that separates this dataset from other factor objects.
@@ -37,6 +37,8 @@ class Factor:
                            must only take in a polars dataframe or series. If the desired transform require more
                            parameters than just the data to operate on, create a functor class and pass function
                            parameters as member variables of the functor class. See factorlib.transforms for examples.
+        :param categorical: The columns that should be considered as categorical variables for XGBoost during
+                            walk-forward optimization
         """
 
         assert (data.columns.__contains__('date_index')), 'Your factor must contain a date column called called ' \
@@ -98,3 +100,8 @@ class Factor:
             )
         for transform in transforms:
             self.data = transform(self.data)
+
+        if categorical is not None:
+            for column in categorical:
+                self.data = self.data.lazy().with_columns(pl.col(column).cast(pl.Utf8).cast(pl.Categorical)).collect(
+                    streaming=True)

@@ -31,24 +31,30 @@ print('Creating Price Features...')
 price_data_dir = get_data_dir() / 'price'
 
 # technicals
-technicals = (
-    pl.scan_csv(price_data_dir / 'technicals.csv', try_parse_dates=True)
-    .collect(streaming=True)
-)
-
-technicals_factor = Factor(name='techs', data=technicals, current_interval='1d')
+# technicals = (
+#     pl.scan_csv(price_data_dir / 'technicals.csv', try_parse_dates=True)
+#     .collect(streaming=True)
+# )
+# technicals_factor = Factor(name='techs', data=technicals, current_interval='1d')
 
 # candle sticks
-candle_sticks = (
-    pl.scan_csv(price_data_dir / 'candle_sticks.csv', try_parse_dates=True)
-    .collect(streaming=True)
-)
-
-candle_sticks_factor = Factor(name='c_sticks', data=candle_sticks, current_interval='1d')
+# candle_sticks = (
+#     pl.scan_csv(price_data_dir / 'candle_sticks.csv', try_parse_dates=True)
+#     .collect(streaming=True)
+# )
+# candle_sticks_factor = Factor(name='c_sticks', data=candle_sticks, current_interval='1d')
 
 print('Creating General Features...')
 # fff
 general_data_dir = get_data_dir() / 'general'
+
+# industry_codes
+industry_codes = (
+    pl.scan_csv(general_data_dir / 'industry_codes.csv', try_parse_dates=True).collect(streaming=True)
+)
+industry_factor = Factor(name='inds', data=industry_codes, current_interval='1d', categorical=['industry', 'subindustry'])
+
+
 # fff_daily = (
 #     pl.scan_csv(general_data_dir / 'fff_daily.csv', try_parse_dates=True)
 #     .collect(streaming=True)
@@ -59,15 +65,21 @@ general_data_dir = get_data_dir() / 'general'
 print('Creating Fundamental Features...')
 fundamental_data_dir = get_data_dir() / 'fundamental'
 
-categorical_fundamentals = pl.scan_csv(fundamental_data_dir / 'subindustry_fundamentals.csv',
-                                       try_parse_dates=True).collect(streaming=True)
-cat_fundamentals_factor = Factor(name='cat_fund', data=categorical_fundamentals,
-                                 current_interval=MODEL_INTERVAL)
+# ratios pct change
+ratios_pct_change = pl.scan_csv(fundamental_data_dir / 'ratios_pct_change.csv',
+                                try_parse_dates=True).collect(streaming=True)
+ratios_pct_factor = Factor(name='r_pct_ch', data=ratios_pct_change,
+                           current_interval=MODEL_INTERVAL)
 
-non_cat_fundamentals = pl.scan_csv(fundamental_data_dir / 'non_cat_fundamentals.csv', try_parse_dates=True).collect(
-    streaming=True)
-non_cat_funds_factor = Factor(name='non_cat_fund', data=non_cat_fundamentals,
-                              current_interval=MODEL_INTERVAL)
+# categorical_fundamentals = pl.scan_csv(fundamental_data_dir / 'subindustry_fundamentals.csv',
+#                                        try_parse_dates=True).collect(streaming=True)
+# cat_fundamentals_factor = Factor(name='cat_fund', data=categorical_fundamentals,
+#                                  current_interval=MODEL_INTERVAL)
+#
+# non_cat_fundamentals = pl.scan_csv(fundamental_data_dir / 'non_cat_fundamentals.csv', try_parse_dates=True).collect(
+#     streaming=True)
+# non_cat_funds_factor = Factor(name='non_cat_fund', data=non_cat_fundamentals,
+#                               current_interval=MODEL_INTERVAL)
 #
 # p/e analysis
 # pe_analysis = pl.scan_csv(fundamental_data_dir / 'pe_analysis.csv', try_parse_dates=True).collect(streaming=True)
@@ -141,10 +153,11 @@ momentum_dir = get_data_dir() / 'momentum'
 print('Creating Model and Adding Factors...')
 model = FactorModel(tickers=tradeable_tickers, interval=MODEL_INTERVAL)
 
-model.add_factor(technicals_factor)
-model.add_factor(candle_sticks_factor)
-model.add_factor(cat_fundamentals_factor)
-model.add_factor(non_cat_funds_factor)
+model.add_factor(ratios_pct_factor)
+model.add_factor(industry_factor)
+# model.add_factor(candle_sticks_factor)
+# model.add_factor(cat_fundamentals_factor)
+# model.add_factor(non_cat_funds_factor)
 # model.add_factor(fff_factor)
 # model.add_factor(fundamentals1_factor)
 # model.add_factor(div_season_factor)
