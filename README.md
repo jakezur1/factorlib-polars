@@ -1,4 +1,4 @@
-# Factorlib
+# factorlib-polars
 Factorlib is a python package (pip installation coming soon) that provides a quick and intuitive system to create, 
 backtest, and evaluate alpha factor models. Factorlib was originally created to be used in the context of the stock
 market, but it can be applied to a variety of time series prediction problems, like horse racing or sports betting.
